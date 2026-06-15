@@ -16,7 +16,7 @@ A Next.js full-stack web application for creating business-ready video advertise
 ## Tech Stack
 
 - Next.js 14 (App Router) + TypeScript + Tailwind CSS
-- Prisma ORM + SQLite
+- Prisma ORM + PostgreSQL (Neon on Vercel; see `.env.example`)
 - JWT auth (jose + bcryptjs)
 - Local file storage (`public/uploads/`)
 
@@ -100,7 +100,7 @@ public/
 Copy `.env.example` to `.env` and adjust:
 
 ```
-DATABASE_URL="file:./dev.db"   # stored at prisma/dev.db
+DATABASE_URL="postgresql://..."   # Neon connection string
 JWT_SECRET="your-secret-here"
 NEXT_PUBLIC_APP_NAME="AI Video Studio"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"

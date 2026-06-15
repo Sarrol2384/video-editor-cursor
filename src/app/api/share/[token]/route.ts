@@ -20,8 +20,8 @@ export async function GET(
   if (!token) return jsonError("Invalid share link", 400);
 
   const rows = await prisma.$queryRaw<ShareRow[]>`
-    SELECT id, name, settings FROM Project
-    WHERE json_extract(settings, '$.shareToken') = ${token}
+    SELECT id, name, settings FROM "Project"
+    WHERE settings::jsonb->>'shareToken' = ${token}
     LIMIT 1
   `;
 

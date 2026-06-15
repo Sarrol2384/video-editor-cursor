@@ -8,7 +8,7 @@ async function main() {
 
   const demoUser = await prisma.user.upsert({
     where: { email: "demo@example.com" },
-    update: {},
+    update: { passwordHash, name: "Demo User", credits: 500 },
     create: {
       email: "demo@example.com",
       passwordHash,
@@ -17,14 +17,19 @@ async function main() {
     },
   });
 
-  await prisma.creditLedger.create({
-    data: {
-      userId: demoUser.id,
-      delta: 500,
-      balanceAfter: 500,
-      reason: "Starter credits (seed)",
-    },
+  const existingLedger = await prisma.creditLedger.findFirst({
+    where: { userId: demoUser.id, reason: "Starter credits (seed)" },
   });
+  if (!existingLedger) {
+    await prisma.creditLedger.create({
+      data: {
+        userId: demoUser.id,
+        delta: 500,
+        balanceAfter: 500,
+        reason: "Starter credits (seed)",
+      },
+    });
+  }
 
   const templates = [
     {
