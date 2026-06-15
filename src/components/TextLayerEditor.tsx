@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { ProjectSettings, TextLayer } from "@/lib/types";
 import { createTextLayer } from "@/lib/types";
+import type { CtaLinkType, TextEffect } from "@/lib/types";
 import { inferWorkflowMode } from "@/lib/brands";
 import { buildBrandLayout, isAgencyBrand, VONWILLINGH_LOGO_URL } from "@/lib/brandLayouts";
 import { CanvasPreview } from "@/components/CanvasPreview";
@@ -19,7 +20,7 @@ import {
 } from "@/lib/textFonts";
 import { buildTextSuggestions } from "@/lib/productSuggestions";
 import { cssTextEffectStyle, resolveBackgroundFill } from "@/lib/textEffects";
-import type { TextEffect } from "@/lib/types";
+import { resolveCtaQrUrl } from "@/lib/qrOverlay";
 
 function overlayFontSize(layer: TextLayer, settings: ProjectSettings): number {
   const { height, displayHeight } = getPreviewLayout(
@@ -264,6 +265,9 @@ export function TextLayerEditor({
             Frame: {settings.aspectRatio} ·{" "}
             {settings.imageFit === "cover" ? "Fill (cropped)" : "Fit (full image)"}.
             {" "}Drag text layers on the preview to reposition them.
+            Text overlays are for preview, PNG export, and share-link buttons.
+            For talking-head MP4s, export lip-sync video and add text in CapCut or
+            similar.
             {videoUrl &&
               settings.videoHasEmbeddedAudio &&
               (shouldHideAvatarSubtitles(settings)
@@ -675,6 +679,81 @@ export function TextLayerEditor({
                         </div>
                       </>
                     )}
+                  </div>
+
+                  <div className="space-y-3 rounded-lg border border-teal-100 bg-teal-50/60 p-3">
+                    <p className="text-sm font-medium text-teal-900">
+                      Call-to-action link (optional)
+                    </p>
+                    <p className="text-xs text-teal-800">
+                      Shown as text/QR on the exported video. For real taps, share
+                      the link from the Export step — MP4s on social cannot have
+                      clickable hotspots.
+                    </p>
+                    {!selected.linkUrl?.trim() && (
+                      <p className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-amber-900">
+                        Add a link here to enable clickable buttons on the share
+                        page.
+                      </p>
+                    )}
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">Link type</label>
+                      <select
+                        className="input-field"
+                        value={selected.linkType || "custom"}
+                        onChange={(e) =>
+                          updateLayer(selected.id, {
+                            linkType: e.target.value as CtaLinkType,
+                          })
+                        }
+                      >
+                        <option value="whatsapp">WhatsApp</option>
+                        <option value="website">Website</option>
+                        <option value="phone">Phone</option>
+                        <option value="custom">Custom URL</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium">
+                        {selected.linkType === "whatsapp"
+                          ? "WhatsApp number or wa.me URL"
+                          : selected.linkType === "phone"
+                            ? "Phone number"
+                            : "URL"}
+                      </label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder={
+                          selected.linkType === "whatsapp"
+                            ? "27123456789 or https://wa.me/27123456789"
+                            : selected.linkType === "phone"
+                              ? "+27 12 345 6789"
+                              : "https://example.com"
+                        }
+                        value={selected.linkUrl || ""}
+                        onChange={(e) =>
+                          updateLayer(selected.id, { linkUrl: e.target.value })
+                        }
+                      />
+                      {selected.linkUrl && resolveCtaQrUrl(selected) && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          Resolves to: {resolveCtaQrUrl(selected)}
+                        </p>
+                      )}
+                    </div>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Show QR code on video</span>
+                      <input
+                        type="checkbox"
+                        checked={Boolean(selected.showQr)}
+                        disabled={!selected.linkUrl?.trim()}
+                        onChange={(e) =>
+                          updateLayer(selected.id, { showQr: e.target.checked })
+                        }
+                        className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                      />
+                    </label>
                   </div>
                     </>
                   )}

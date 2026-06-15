@@ -6,6 +6,7 @@ import type { AgencyPostFormat } from "@/lib/agencyPostFormat";
 
 export type TextLayerType = "text" | "image";
 export type TextEffect = "none" | "glow" | "outline" | "shadow";
+export type CtaLinkType = "whatsapp" | "website" | "phone" | "custom";
 
 export interface TextLayer {
   id: string;
@@ -31,6 +32,11 @@ export interface TextLayer {
   /** Logo/image overlay — width as a fraction of canvas width (e.g. 0.3 = 30%). */
   imageUrl?: string;
   imageWidth?: number;
+  /** Optional click target — visual in MP4; clickable on share page. */
+  linkUrl?: string;
+  linkType?: CtaLinkType;
+  /** Burn a small QR code near this layer (encodes linkUrl). */
+  showQr?: boolean;
 }
 
 export interface ProjectSettings {
@@ -82,6 +88,10 @@ export interface ProjectSettings {
   videoHasEmbeddedAudio?: boolean;
   /** Crop lower third on talking-head preview/export to hide garbled Kling subtitles. */
   hideAvatarSubtitles?: boolean;
+  /** Unguessable token for public /share/[token] page. */
+  shareToken?: string;
+  /** Last exported MP4 URL shown on the share page. */
+  shareExportUrl?: string;
 }
 
 export const DEFAULT_TEXT_LAYERS: TextLayer[] = [

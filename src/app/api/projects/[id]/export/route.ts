@@ -183,6 +183,20 @@ export async function POST(
       const filename = `ad-${projectId.slice(0, 8)}.mp4`;
       const storageUrl = `/uploads/${path.basename(outputPath)}`;
 
+      let shareTokenOut: string | undefined;
+      if (lipSyncExport) {
+        const nextSettings = {
+          ...settings,
+          shareExportUrl: storageUrl,
+          shareToken: settings.shareToken || uuidv4(),
+        };
+        shareTokenOut = nextSettings.shareToken;
+        await prisma.project.update({
+          where: { id: projectId },
+          data: { settings: JSON.stringify(nextSettings) },
+        });
+      }
+
       await prisma.asset.create({
         data: {
           userId: user.id,
@@ -199,7 +213,7 @@ export async function POST(
         },
       });
 
-      return jsonOk({ url: storageUrl, filename });
+      return jsonOk({ url: storageUrl, filename, shareToken: shareTokenOut });
     } catch (err) {
       console.error("Export conversion failed:", err);
       if (outputPath) {

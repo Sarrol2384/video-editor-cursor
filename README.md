@@ -97,13 +97,29 @@ public/
 
 ## Environment Variables
 
-Copy `.env` and adjust if needed:
+Copy `.env.example` to `.env` and adjust:
 
 ```
 DATABASE_URL="file:./dev.db"   # stored at prisma/dev.db
 JWT_SECRET="your-secret-here"
 NEXT_PUBLIC_APP_NAME="AI Video Studio"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
+
+`NEXT_PUBLIC_APP_URL` is used for **share links** and absolute video URLs. On Vercel, set it to your deployment URL (e.g. `https://video-editor-cursor.vercel.app`) so copied links are not `localhost`.
+
+## Deploying to Vercel
+
+1. Import the GitHub repo at [vercel.com/new](https://vercel.com/new) (`Sarrol2384/video-editor-cursor`).
+2. Framework preset: **Next.js**.
+3. Environment variables:
+   - `NEXT_PUBLIC_APP_URL` — your Vercel URL (or custom domain)
+   - `JWT_SECRET` — strong random string
+   - `DATABASE_URL` — hosted Postgres (Neon, Vercel Postgres, etc.)
+   - API keys from your local `.env` (e.g. `FAL_KEY`)
+4. Deploy.
+
+**Production note:** The MVP uses SQLite and `public/uploads/` on disk. Vercel’s filesystem is ephemeral — uploads and exports will not persist across deploys until you migrate to **hosted Postgres** and **blob storage** (Vercel Blob or S3). Share links need both a public `NEXT_PUBLIC_APP_URL` and videos that remain available at that URL.
 
 ## Next Steps (beyond MVP)
 

@@ -5,7 +5,7 @@ interface AssetCardProps {
     source: string;
     storageUrl: string;
     metadata: string;
-    createdAt: string;
+    createdAt: string | Date;
     project?: { id: string; name: string } | null;
   };
 }

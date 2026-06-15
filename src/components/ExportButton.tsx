@@ -18,6 +18,8 @@ import {
 } from "@/lib/exportAudio";
 import { waitForExportFonts } from "@/lib/textFonts";
 import { isAgencyWorkflow } from "@/lib/studioWorkflow";
+import { loadQrOverlayImages } from "@/lib/qrOverlay";
+import { getClientShareBaseUrl } from "@/lib/appUrl";
 import { AvatarSubtitleToggle } from "@/components/AvatarSubtitleToggle";
 
 interface ExportButtonProps {
@@ -35,6 +37,8 @@ type ExportPhase =
   | "loading"
   | "rendering"
   | "converting";
+
+type ExportMode = "lipSyncOnly" | "standard";
 
 const VIDEO_LOAD_TIMEOUT_MS = 12_000;
 const ASSET_LOAD_TIMEOUT_MS = 12_000;
@@ -87,6 +91,7 @@ async function loadVideoElement(
   const abortPromise = rejectOnAbort(signal);
   const readyPromise = new Promise<HTMLVideoElement>((resolve, reject) => {
     const onReady = () => {
+      if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
       cleanup();
       if (!Number.isFinite(video.duration) || video.duration <= 0) {
         reject(new Error("Video has no duration metadata"));
@@ -100,9 +105,11 @@ async function loadVideoElement(
     };
     const cleanup = () => {
       video.removeEventListener("loadeddata", onReady);
+      video.removeEventListener("canplay", onReady);
       video.removeEventListener("error", onError);
     };
     video.addEventListener("loadeddata", onReady);
+    video.addEventListener("canplay", onReady);
     video.addEventListener("error", onError);
     video.load();
   });
@@ -119,6 +126,19 @@ async function loadVideoElement(
   return Promise.race(racers);
 }
 
+async function loadAllOverlayImages(
+  layers: ProjectSettings["textLayers"],
+  timeoutMs: number
+): Promise<Map<string, HTMLImageElement>> {
+  const [base, qr] = await Promise.all([
+    loadOverlayImages(layers, timeoutMs),
+    loadQrOverlayImages(layers, timeoutMs),
+  ]);
+  const merged = new Map(base);
+  qr.forEach((img, key) => merged.set(key, img));
+  return merged;
+}
+
 export function ExportButton({
   imageUrl,
   settings,
@@ -131,6 +151,7 @@ export function ExportButton({
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<ExportPhase>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const hasAudio = hasExportAudio(settings);
@@ -142,7 +163,7 @@ export function ExportButton({
   async function renderStillFrame(): Promise<HTMLCanvasElement> {
     const [img, overlayImages] = await Promise.all([
       loadImage(imageUrl, ASSET_LOAD_TIMEOUT_MS),
-      loadOverlayImages(settings.textLayers, ASSET_LOAD_TIMEOUT_MS),
+      loadAllOverlayImages(settings.textLayers, ASSET_LOAD_TIMEOUT_MS),
     ]);
 
     const baseWidth = getCanvasBaseWidth(settings.resolution);
@@ -296,7 +317,7 @@ export function ExportButton({
 
     const [img, overlayImages] = await Promise.all([
       loadImage(imageUrl, ASSET_LOAD_TIMEOUT_MS),
-      loadOverlayImages(settings.textLayers, ASSET_LOAD_TIMEOUT_MS),
+      loadAllOverlayImages(settings.textLayers, ASSET_LOAD_TIMEOUT_MS),
     ]);
 
     const baseWidth = getCanvasBaseWidth(settings.resolution);
@@ -338,7 +359,7 @@ export function ExportButton({
       await waitForExportFonts(settings.textLayers);
     }
 
-    const overlayImages = await loadOverlayImages(
+    const overlayImages = await loadAllOverlayImages(
       settings.textLayers,
       ASSET_LOAD_TIMEOUT_MS
     );
@@ -506,7 +527,7 @@ export function ExportButton({
   async function postExportForm(
     formData: FormData,
     signal?: AbortSignal
-  ): Promise<string> {
+  ): Promise<{ url: string; shareToken?: string }> {
     setPhase("converting");
     setProgress(90);
 
@@ -519,6 +540,7 @@ export function ExportButton({
     const data = (await response.json()) as {
       url?: string;
       filename?: string;
+      shareToken?: string;
       error?: string;
     };
 
@@ -530,13 +552,13 @@ export function ExportButton({
       throw new Error("Export succeeded but no download URL was returned");
     }
 
-    return data.url;
+    return { url: data.url, shareToken: data.shareToken };
   }
 
   async function exportLipSyncOnServer(
     options: { rawOnly?: boolean },
     signal?: AbortSignal
-  ): Promise<string> {
+  ): Promise<{ url: string; shareToken?: string }> {
     const formData = new FormData();
     if (options.rawOnly) {
       formData.append("rawOnly", "1");
@@ -549,8 +571,11 @@ export function ExportButton({
   async function uploadAndConvert(
     videoBlob: Blob,
     signal?: AbortSignal,
-    options?: { canvasExport?: boolean; exportDurationSec?: number }
-  ): Promise<string> {
+    options?: {
+      canvasExport?: boolean;
+      exportDurationSec?: number;
+    }
+  ): Promise<{ url: string; shareToken?: string }> {
     setPhase("converting");
     setProgress(95);
 
@@ -572,6 +597,31 @@ export function ExportButton({
     return postExportForm(formData, signal);
   }
 
+  async function persistShareSettings(updates: {
+    shareToken?: string;
+    shareExportUrl?: string;
+  }) {
+    if (!onChange) return;
+    onChange(updates);
+    await fetch(`/api/projects/${projectId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ settings: updates }),
+    }).catch(() => {});
+  }
+
+  async function copyShareLink() {
+    let token = settings.shareToken;
+    if (!token) {
+      token = crypto.randomUUID();
+      await persistShareSettings({ shareToken: token });
+    }
+    const url = `${getClientShareBaseUrl()}/share/${token}`;
+    await navigator.clipboard.writeText(url);
+    setShareLinkCopied(true);
+    setTimeout(() => setShareLinkCopied(false), 2500);
+  }
+
   function downloadUrl(url: string, filename: string) {
     const a = document.createElement("a");
     a.href = url;
@@ -583,7 +633,7 @@ export function ExportButton({
     abortRef.current?.abort();
   }
 
-  async function handleExport() {
+  async function handleExport(mode: ExportMode = "standard") {
     if (!imageUrl && !videoUrl) return;
 
     stopActiveAudioPreview();
@@ -603,9 +653,13 @@ export function ExportButton({
       if (embeddedSpeech && videoUrl) {
         setProgress(40);
         setPhase("converting");
-        const mp4Url = await exportLipSyncOnServer({}, signal);
+        const { url: mp4Url, shareToken } = await exportLipSyncOnServer({}, signal);
         downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
         onExported?.(mp4Url);
+        await persistShareSettings({
+          shareExportUrl: mp4Url,
+          ...(shareToken ? { shareToken } : {}),
+        });
         setProgress(100);
         return;
       }
@@ -642,7 +696,7 @@ export function ExportButton({
         videoBlob = await exportFromImage(exportDurationSec, signal);
       }
 
-      const mp4Url = await uploadAndConvert(videoBlob, signal, {
+      const { url: mp4Url } = await uploadAndConvert(videoBlob, signal, {
         canvasExport,
         exportDurationSec,
       });
@@ -678,7 +732,7 @@ export function ExportButton({
 
     try {
       setProgress(40);
-      const mp4Url = await exportLipSyncOnServer({ rawOnly: true }, signal);
+      const { url: mp4Url } = await exportLipSyncOnServer({ rawOnly: true }, signal);
       downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}-raw.mp4`);
       setProgress(100);
     } catch (err) {
@@ -719,11 +773,11 @@ export function ExportButton({
 
       {embeddedSpeech && (
         <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
-          Export keeps the original Kling lip-sync video on the server (no browser
-          re-encode). Garbled subtitles are cropped when{" "}
-          <strong>Hide AI subtitle band</strong> is on. Optional background music
-          is mixed at export. On-screen text/logo overlays are preview-only for
-          talking-head — use Export PNG or edit externally if you need them baked in.
+          Export keeps your Kling lip-sync clip on the server (subtitles cropped
+          when <strong>Hide AI subtitle band</strong> is on). Add logo and text
+          in CapCut or similar after download, or use <strong>Export PNG</strong>{" "}
+          and <strong>share link</strong> for static posts and clickable
+          WhatsApp or website buttons.
         </p>
       )}
 
@@ -750,14 +804,25 @@ export function ExportButton({
           : "Export PNG (static post)"}
       </button>
 
-      <button
-        type="button"
-        onClick={handleExport}
-        disabled={exporting || (!imageUrl && !videoUrl)}
-        className="btn-primary w-full py-3 text-base"
-      >
-        {exporting ? phaseLabel : agency ? "Export MP4 (lip-sync)" : "Export MP4 (text + audio)"}
-      </button>
+      {embeddedSpeech ? (
+        <button
+          type="button"
+          onClick={() => void handleExport("lipSyncOnly")}
+          disabled={exporting || !videoUrl}
+          className="btn-primary w-full py-3 text-base"
+        >
+          {exporting ? phaseLabel : "Export MP4"}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => void handleExport("standard")}
+          disabled={exporting || (!imageUrl && !videoUrl)}
+          className="btn-primary w-full py-3 text-base"
+        >
+          {exporting ? phaseLabel : "Export MP4 (text + audio)"}
+        </button>
+      )}
 
       {exporting && (
         <>
@@ -784,13 +849,24 @@ export function ExportButton({
       )}
 
       {videoUrl && !exporting && (
-        <button
-          type="button"
-          onClick={downloadRawVideo}
-          className="btn-secondary w-full text-sm"
-        >
-          Download cropped lip-sync video (.mp4)
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={downloadRawVideo}
+            className="btn-secondary w-full text-sm"
+          >
+            Download cropped lip-sync video (.mp4)
+          </button>
+          {embeddedSpeech && (
+            <button
+              type="button"
+              onClick={() => void copyShareLink()}
+              className="btn-secondary w-full text-sm"
+            >
+              {shareLinkCopied ? "Share link copied!" : "Copy share link (clickable CTAs)"}
+            </button>
+          )}
+        </>
       )}
 
       <p className="text-center text-xs text-gray-500">

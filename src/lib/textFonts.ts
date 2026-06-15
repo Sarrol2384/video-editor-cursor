@@ -64,7 +64,7 @@ export async function waitForExportFonts(
   }
 
   await Promise.all(
-    [...families].map((family) =>
+    Array.from(families).map((family) =>
       document.fonts.load(`700 24px ${family}`).catch(() => undefined)
     )
   );

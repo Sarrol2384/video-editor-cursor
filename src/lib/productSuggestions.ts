@@ -423,7 +423,7 @@ function fillTemplate(template: string, settings: ProjectSettings): string {
 }
 
 function uniqueStrings(items: string[]): string[] {
-  return [...new Set(items.filter(Boolean))];
+  return Array.from(new Set(items.filter(Boolean)));
 }
 
 export function buildNarrationSuggestions(settings: ProjectSettings): string[] {
