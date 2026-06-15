@@ -1,0 +1,440 @@
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>AI Video Generation Platform - Product Requirements Document v2.0</title>
+<style>
+ body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #1a1a1a; line-height: 1.45; }
+ h1 { font-size: 26pt; color: #0b3d91; margin-bottom: 2pt; }
+ h2 { font-size: 17pt; color: #0b3d91; border-bottom: 2px solid #0b3d91; padding-bottom: 3pt; margin-top: 22pt; }
+ h3 { font-size: 13pt; color: #16448c; margin-top: 16pt; }
+ h4 { font-size: 11.5pt; color: #333; margin-top: 12pt; }
+ table { border-collapse: collapse; width: 100%; margin: 8pt 0 14pt 0; font-size: 10pt; }
+ th { background: #0b3d91; color: #fff; text-align: left; padding: 6pt 8pt; border: 1px solid #0b3d91; }
+ td { border: 1px solid #b8c4d9; padding: 6pt 8pt; vertical-align: top; }
+ tr:nth-child(even) td { background: #f2f5fb; }
+ .meta td { font-size: 10.5pt; }
+ .p0 { color: #b00020; font-weight: bold; }
+ .p1 { color: #b35900; font-weight: bold; }
+ .p2 { color: #2e7d32; font-weight: bold; }
+ .flag { background: #fff4e5; border-left: 4px solid #b35900; padding: 8pt 12pt; margin: 10pt 0; }
+ .note { background: #eef4ff; border-left: 4px solid #0b3d91; padding: 8pt 12pt; margin: 10pt 0; }
+ code { background: #eef0f4; padding: 1px 4px; border-radius: 3px; font-family: Consolas, monospace; font-size: 9.5pt; }
+ ul, ol { margin-top: 4pt; }
+ .toc a { text-decoration: none; color: #16448c; }
+ .small { font-size: 9pt; color: #555; }
+</style>
+</head>
+<body>
+
+<h1>AI Video Generation Platform for Business Advertising</h1>
+<p style="font-size:13pt; color:#16448c; margin-top:0;"><b>Product Requirements Document (PRD)</b></p>
+
+<table class="meta">
+ <tr><th style="width:25%">Field</th><th>Value</th></tr>
+ <tr><td>Document version</td><td>2.0 (revised &amp; expanded)</td></tr>
+ <tr><td>Based on</td><td>v1.0, dated June 11, 2026</td></tr>
+ <tr><td>Last updated</td><td>June 11, 2026</td></tr>
+ <tr><td>Status</td><td>Draft for review</td></tr>
+ <tr><td>Document owner</td><td>[Product Lead - TBD]</td></tr>
+ <tr><td>Contributors / reviewers</td><td>[Engineering Lead, Design Lead, Legal/Compliance, Finance - TBD]</td></tr>
+ <tr><td>Classification</td><td>Internal - Confidential</td></tr>
+</table>
+
+<h3>Change log</h3>
+<table>
+ <tr><th>Version</th><th>Date</th><th>Author</th><th>Summary of changes</th></tr>
+ <tr><td>1.0</td><td>2026-06-11</td><td>Original author</td><td>Initial PRD.</td></tr>
+ <tr><td>2.0</td><td>2026-06-11</td><td>Revision</td><td>Restructured document; added functional requirements with IDs and acceptance criteria, user stories, non-functional requirements, data model, analytics plan, assumptions/dependencies, open questions, competitive analysis, and a glossary. Expanded compliance (health advertising, music/voice licensing, AI provenance, consent). Flagged freeze-masking feasibility and credit unit-economics issues. Revised roadmap.</td></tr>
+</table>
+
+<h2>1. Executive Summary</h2>
+<p>This document defines a cross-platform (Web, iOS, Android) multimedia creation platform that lets businesses produce high-quality advertising assets in minutes, without creative agencies or complex editing software. The product combines AI image generation, AI video generation, and AI audio production into a single guided workflow aimed at high-frequency commercial use cases: pharmacy promotions, retail product ads, e-commerce launches, and social campaigns.</p>
+<p>A user can start from a product photo, restage it with AI-generated backgrounds, animate it into a short-form video using a best-fit third-party video model, and add professional narration and licensed background music that are automatically mixed and synchronized to the final output. The platform's differentiation is <b>business control</b> (subject/text freeze, brand consistency, approval gates), <b>transparent economics</b> (cost shown at every step), and <b>intelligent model routing</b> across leading providers based on cost, speed, quality, and use case.</p>
+<p>We act as an <b>orchestration and trust layer</b> on top of third-party foundation models - not a model developer and not a professional NLE replacement.</p>
+
+<div class="note"><b>How v2 differs from v1:</b> This revision keeps the strong vision of v1 and makes it executable: it adds testable requirements, surfaces three material risks (freeze-masking technical feasibility, credit unit economics, regulated-advertising compliance), and fills gaps that would otherwise block engineering, design, legal, and finance sign-off.</div>
+
+<h2>2. Problem Statement &amp; Product Overview</h2>
+<h3>2.1 Problem statement</h3>
+<p>Small and medium businesses (SMBs) - local pharmacies, e-commerce retailers, marketing agencies - face high barriers to producing video advertising. Traditional production is expensive, slow, and skill-intensive. Generic AI video generators exist but lack business-critical controls, such as keeping a product image perfectly static while animating its background, or keeping pricing/disclaimer text legible without artifacting. Finally, the fragmented landscape of AI models makes it hard for non-experts to optimize cost vs. quality.</p>
+<h3>2.2 Product overview</h3>
+<p>An intuitive cross-platform application that abstracts AI multimedia production complexity. It provides business-centric templates (pharmacy weekly specials, product launches, social ads), precise creative controls (subject freeze, text-overlay freeze, audio mixing, brand styling), and an intelligent backend that routes image/video/audio requests to the optimal model based on user parameters (cost, duration, resolution, speed, quality). Assets flow through a connected pipeline: generated images feed video generation; generated narration and music are auto-aligned to the final deliverable.</p>
+
+<h2>3. Goals, Non-Goals &amp; Success Metrics</h2>
+<h3>3.1 Goals</h3>
+<ul>
+ <li>Deliver reliable text-to-video and image-to-video generation that produces business-ready ad content.</li>
+ <li>Provide masking controls that freeze specific elements (products, text overlays, logos) while animating the surrounding scene - implemented in a way that is technically guaranteed (see <a href="#freeze">§12.4</a>).</li>
+ <li>Integrate with at least six top-tier AI video models behind a unified interface with transparent cost/quality trade-offs.</li>
+ <li>Achieve reliable cross-platform synchronization of assets and projects across desktop and mobile.</li>
+ <li>Operate the credit economy at a sustainable gross margin while keeping pricing transparent to users.</li>
+</ul>
+<h3>3.2 Non-goals</h3>
+<ul>
+ <li>Replacing professional NLEs (Adobe Premiere, Final Cut Pro).</li>
+ <li>Long-form content (movies, documentaries); focus is short-form ads (4-16s).</li>
+ <li>Developing proprietary foundation video models; we are an orchestration/wrapper layer.</li>
+ <li>(v1) Real-time collaborative multi-user editing; team roles are limited to asset sharing and approval.</li>
+</ul>
+
+<h3>3.3 Success metrics (KPIs)</h3>
+<table>
+ <tr><th>Category</th><th>Metric</th><th>Target</th></tr>
+ <tr><td>North Star</td><td>Business-ready ads exported per active account / month</td><td>&ge; 8</td></tr>
+ <tr><td>Acquisition</td><td>Active SMB accounts within 6 months of GA</td><td>10,000</td></tr>
+ <tr><td>Activation</td><td>New users who export a first video within 24h ("time to first ad")</td><td>&ge; 60% &lt; 15 min</td></tr>
+ <tr><td>Engagement</td><td>Video generations per active user / month</td><td>&ge; 15</td></tr>
+ <tr><td>Conversion</td><td>Free / pay-as-you-go &rarr; paid subscription</td><td>&ge; 8%</td></tr>
+ <tr><td>Reliability</td><td>Generation success rate (rendered without timeout/error)</td><td>&gt; 95%</td></tr>
+ <tr><td>Quality</td><td>Median generations before user approves/exports (lower is better)</td><td>&le; 3</td></tr>
+ <tr><td>Retention</td><td>Monthly subscription churn</td><td>&lt; 5%</td></tr>
+ <tr><td>Satisfaction</td><td>In-product CSAT / NPS</td><td>CSAT &ge; 4.2/5; NPS &ge; 30</td></tr>
+ <tr><td>Unit economics</td><td>Gross margin on credit sales vs. API cost</td><td>&ge; 40%</td></tr>
+</table>
+<div class="flag"><b>Consistency flag:</b> v1 targeted "15 video generations per active user/month," but Pro includes 500 credits and Runway Gen4 is priced at 5 credits/sec. A single 16s Runway render = 80 credits, so 500 credits = ~6 max-length premium videos. The engagement target and the credit allocation must be reconciled (see <a href="#pricing">§14</a>). The North Star and engagement metrics above assume most generations use mid/low-cost models.</div>
+
+<h2>4. Target Audience</h2>
+<h3>4.1 Personas</h3>
+<table>
+ <tr><th>Persona</th><th>Context &amp; needs</th><th>Primary jobs-to-be-done</th></tr>
+ <tr><td>Pharmacy / local retail owner</td><td>Non-technical; knows product and brand. Needs fast weekly promos for social.</td><td>"When I have a weekly special, I want a branded video with accurate price text so I can post it the same day."</td></tr>
+ <tr><td>E-commerce marketer</td><td>Produces hundreds of product videos monthly. Values batch, brand consistency, cost/video.</td><td>"When I launch a catalog, I want to batch-generate on-brand videos per SKU so I scale without per-asset effort."</td></tr>
+ <tr><td>Social media agency manager</td><td>Manages multiple client accounts. Needs cross-platform access, cloud storage, premium "Pro" outputs.</td><td>"When I service clients, I want high-quality, on-brand variants quickly so I justify my retainer and margins."</td></tr>
+</table>
+
+<h3>4.2 Key use cases</h3>
+<ul>
+ <li><b>Pharmacy advertisements:</b> Upload a cough-syrup bottle photo; generate a clean shelf or honey-and-lemon wellness background; animate only the environment; keep bottle and price text stable; add warm voice-over and calm music.</li>
+ <li><b>Retail product showcases:</b> Restage a product into a kitchen counter, bathroom vanity, or spa setting; convert the approved image into a premium product-reveal video.</li>
+ <li><b>Social campaigns:</b> Generate multiple 9:16 variants with different hooks, narration tones, and music moods for A/B testing on Reels, TikTok, Shorts.</li>
+ <li><b>E-commerce catalog automation:</b> Batch-process dozens of SKUs with brand-approved styles, video templates, narration scripts, and platform aspect ratios.</li>
+ <li><b>Explainer / announcement videos:</b> Turn a product description into a short explainer with AI narration, title overlays, and music synced to runtime.</li>
+</ul>
+
+<h3>4.3 Integrated workflow</h3>
+<ol>
+ <li>Upload a product image or select an existing asset from the cloud library.</li>
+ <li>(Optional) Generate enhanced product images with AI backgrounds, lighting edits, or style variants.</li>
+ <li>Select the approved image and generate a video using prompts, templates, and motion controls.</li>
+ <li>Enter a narration script or product description and generate an AI voice-over.</li>
+ <li>Select background music from a mood-based library or upload custom audio.</li>
+ <li>System automatically mixes narration + music and syncs to the final video duration.</li>
+ <li>Preview, revise, export, and distribute the business-ready ad.</li>
+</ol>
+<p class="small">Pipeline: <code>Upload &rarr; Image enhance (opt) &rarr; Approve &rarr; Video gen &rarr; Narration &rarr; Music &rarr; Auto-mix/sync &rarr; Preview &rarr; Export</code>. Each arrow is a no-manual-export handoff (FR-HANDOFF-01).</p>
+
+<h2>5. Scope (v1)</h2>
+<table>
+ <tr><th>In scope (v1)</th><th>Out of scope (v1, future)</th></tr>
+ <tr><td>T2V, I2V, AI product images, narration, music, auto-mix; 6 model integrations; freeze controls; templates; credits/billing; cloud library; web + mobile.</td><td>Real-time multi-user co-editing; public API (Enterprise); advanced timeline/keyframe editor; custom voice cloning; localization of the UI beyond English; team role hierarchy beyond approver/editor.</td></tr>
+</table>
+
+<h2>6. Feature Specifications &amp; Functional Requirements</h2>
+<p>Requirements use IDs and priorities: <span class="p0">P0 = Critical</span>, <span class="p1">P1 = High</span>, <span class="p2">P2 = Medium</span>. Each P0/P1 has acceptance criteria (AC).</p>
+
+<h3>6.1 Multimedia core platform</h3>
+<table>
+ <tr><th>ID</th><th>Feature</th><th>Description</th><th>Priority</th></tr>
+ <tr><td>FR-CORE-01</td><td>Text-to-Video (T2V)</td><td>Generate short-form commercial videos from natural-language prompts and templates.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-CORE-02</td><td>Image-to-Video (I2V)</td><td>Animate uploaded or AI-generated stills into short-form ads with motion controls.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-CORE-03</td><td>AI product image generation</td><td>Create improved visuals with new backgrounds, lighting, compositions, style variants.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-CORE-04</td><td>Audio narration generation</td><td>AI voice-over from scripts with selectable voices, languages, tones.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-CORE-05</td><td>Background music integration</td><td>Mood-based selection, custom uploads, automatic audio balancing.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-CORE-06</td><td>Multi-model support</td><td>Integrations with multiple providers (see §10) and a pluggable adapter for future models.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-CORE-07</td><td>Intelligent model routing</td><td>Recommend/auto-select image, video, audio models by quality, speed, cost, use case.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-CORE-08</td><td>Seamless asset handoff</td><td>Images, videos, voice, music move between steps without manual export/import.</td><td class="p1">P1</td></tr>
+</table>
+<p><b>AC (FR-CORE-01/02):</b> Given a valid prompt/image and settings, when the user clicks Generate, the system returns a playable video matching the chosen aspect ratio, duration (&plusmn;1 frame), and resolution, or a clear error with no credit charge on failure.<br>
+<b>AC (FR-CORE-07):</b> Given user-selected priorities (e.g., "cheapest acceptable"), the router proposes a model with shown estimated cost, ETA, and a one-line rationale, and the user can override.</p>
+
+<h3>6.2 AI image generation &amp; editing</h3>
+<table>
+ <tr><th>ID</th><th>Requirement</th><th>Priority</th></tr>
+ <tr><td>FR-IMG-01</td><td>Product image enhancement: upload product photos; request variations with cleaner composition, polished lighting, commercial presentation.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-IMG-02</td><td>Background options: one-click presets (studio, lifestyle, seasonal, retail display) and custom prompts ("on a kitchen counter", "spa setting", "pharmacy shelf display").</td><td class="p0">P0</td></tr>
+ <tr><td>FR-IMG-03</td><td>Editing: background removal, object isolation, object placement, shadow generation, lighting adjustment, scene replacement.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-IMG-04</td><td>Style variants: Professional, Lifestyle, Minimalist, Vibrant - with brand-safe prompt guardrails.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-IMG-05</td><td>Variation generation: multiple options per request; side-by-side compare, favorite, approve.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-IMG-06</td><td>Video handoff: approved images sent directly to video flow (no download/re-upload).</td><td class="p1">P1</td></tr>
+</table>
+<p><b>AC (FR-IMG-01):</b> Original product geometry and label text remain recognizable in enhanced output; the user can revert to the original at any time.</p>
+
+<h3>6.3 Video generation &amp; motion controls</h3>
+<table>
+ <tr><th>ID</th><th>Requirement</th><th>Priority</th></tr>
+ <tr><td>FR-VID-01</td><td>Aspect ratios: 1:1, 16:9, 9:16, 4:3, 3:4, 21:9 - filtered dynamically by model availability.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-VID-02</td><td>Duration: 4-16s, constrained by model capability.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-VID-03</td><td>Resolution: 720p, 1080p, 4K where supported by model and tier.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-VID-04</td><td>Audio enable/disable for silent or full-audio exports.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-VID-05</td><td>Fast Mode toggle (speed/lower credit cost).</td><td class="p1">P1</td></tr>
+ <tr><td>FR-VID-06</td><td>Quality Mode: Pro vs Standard, with visible speed/cost trade-offs.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-VID-07</td><td>Text overlay control: promotional text, pricing, disclaimers, CTA - with freeze controls for legibility.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-VID-08</td><td>Product freeze control: mask the core subject so background animates while product/package/logo stays stable.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-VID-09</td><td>Animation intensity: Low / Medium / High.</td><td class="p2">P2</td></tr>
+ <tr><td>FR-VID-10</td><td>Background animation settings: prompts that move background elements only.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-VID-11</td><td>Camera movement: pan, tilt, zoom, dolly, orbit, cinematic tracking (where supported).</td><td class="p2">P2</td></tr>
+ <tr><td>FR-VID-12</td><td>Lighting/mood: studio, natural, premium, vibrant, calm, cinematic, seasonal.</td><td class="p2">P2</td></tr>
+ <tr><td>FR-VID-13</td><td>Frame control: define first frame and, where supported, last frame for continuity/loops.</td><td class="p2">P2</td></tr>
+</table>
+<p><b>AC (FR-VID-07/08 - the differentiator):</b> When freeze is enabled on a region, every exported frame reproduces that region pixel-for-pixel (or within a defined SSIM threshold &ge; 0.99) relative to the source, and overlay text remains legible (no warping, OCR round-trips to original string). See feasibility analysis in <a href="#freeze">§12.4</a>.</p>
+
+<h3>6.4 Audio narration &amp; background music</h3>
+<table>
+ <tr><th>ID</th><th>Requirement</th><th>Priority</th></tr>
+ <tr><td>FR-AUD-01</td><td>Text-to-speech narration from a script or product description.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-AUD-02</td><td>Voice library: multiple voices, accents, genders, languages, tones (Professional, Warm, Energetic).</td><td class="p0">P0</td></tr>
+ <tr><td>FR-AUD-03</td><td>Background music library: curated, mood-tagged (Uplifting, Calm, Professional, Energetic) - all properly licensed (see §15).</td><td class="p0">P0</td></tr>
+ <tr><td>FR-AUD-04</td><td>Custom audio uploads (music beds, narration, brand audio) - with rights attestation.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-AUD-05</td><td>Audio mixing: automatic ducking/balancing of narration over music, with user override.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-AUD-06</td><td>Audio controls: volume, fade in/out, trim, timing offset, start delay, mute per track.</td><td class="p2">P2</td></tr>
+ <tr><td>FR-AUD-07</td><td>Video sync: narration and music auto-fit to chosen duration via loop/trim/fade.</td><td class="p1">P1</td></tr>
+</table>
+<p><b>AC (FR-AUD-05):</b> When narration overlaps music, music level automatically reduces (configurable, default ~-12 dB) during speech and restores after; user can override the duck depth.</p>
+
+<h3>6.5 Business features &amp; workflow automation</h3>
+<table>
+ <tr><th>ID</th><th>Requirement</th><th>Priority</th></tr>
+ <tr><td>FR-BIZ-01</td><td>Brand consistency: save brand palettes, fonts, logos, preferred image styles, approved voice presets, music mood rules.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-BIZ-02</td><td>Batch generation: upload multiple products or a SKU CSV; auto-generate image/video/audio variants from templates.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-BIZ-03</td><td>Industry templates: Pharmacy Ads, Product Launches, Social Posts, Retail Promotions, Explainers.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-BIZ-04</td><td>Cloud storage &amp; sync: all assets stored securely and synced across desktop/mobile.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-BIZ-05</td><td>Cost optimization recommendations: estimated credit cost at every stage; suggests cheaper alternatives when quality impact is minimal.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-BIZ-06</td><td>Approval workflow: approve image before video, approve audio before export - to reduce wasted credits.</td><td class="p0">P0</td></tr>
+</table>
+
+<h3>6.6 Accounts, billing &amp; credits</h3>
+<table>
+ <tr><th>ID</th><th>Requirement</th><th>Priority</th></tr>
+ <tr><td>FR-ACC-01</td><td>Sign-up/sign-in (email + OAuth); password reset; session management.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-ACC-02</td><td>Credit wallet: balance, real-time pre-charge estimate, post-charge ledger, refund on failed generation.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-ACC-03</td><td>Subscription management: upgrade/downgrade/cancel; proration; invoices.</td><td class="p0">P0</td></tr>
+ <tr><td>FR-ACC-04</td><td>Usage dashboard: credits consumed by model/feature; export history.</td><td class="p1">P1</td></tr>
+ <tr><td>FR-ACC-05</td><td>Team sharing (agency): invite members; roles = Owner, Editor, Approver; per-client workspaces.</td><td class="p2">P2</td></tr>
+</table>
+<p><b>AC (FR-ACC-02):</b> Credits are reserved on submit and only finalized on successful render; failed/timed-out generations auto-refund within the same session and are visible in the ledger.</p>
+
+<h3>6.7 Representative user stories</h3>
+<ul>
+ <li><b>US-01 (Pharmacy owner):</b> As a pharmacy owner, I want to pick a "Weekly Sale" template, upload a product photo, and type a price, so I can export a branded 9:16 video with accurate, legible pricing in under 10 minutes.</li>
+ <li><b>US-02 (E-commerce marketer):</b> As a marketer, I want to upload a CSV of 50 SKUs and a brand template, so I can batch-generate 50 on-brand product videos and download them as a zip.</li>
+ <li><b>US-03 (Agency manager):</b> As an agency manager, I want separate client workspaces with their own brand kits and an approval step, so client work stays organized and on-brand.</li>
+ <li><b>US-04 (Cost-conscious user):</b> As any user, I want to see the credit cost and ETA before generating, and a cheaper suggested model, so I control spend.</li>
+ <li><b>US-05 (Compliance-sensitive user):</b> As a pharmacy advertiser, I want my product label and price text guaranteed unchanged, so my ad is accurate and compliant.</li>
+</ul>
+
+<h2>7. Non-Functional Requirements (NFRs)</h2>
+<table>
+ <tr><th>ID</th><th>Category</th><th>Requirement / target</th></tr>
+ <tr><td>NFR-PERF-01</td><td>Performance</td><td>UI interactions &lt; 200ms p95; image preview generation start &lt; 3s; perceived app responsiveness maintained during long renders via async UX.</td></tr>
+ <tr><td>NFR-PERF-02</td><td>Generation latency</td><td>Standard video render p50 &lt; 90s, p95 &lt; 4 min (model-dependent); background processing with notification on completion.</td></tr>
+ <tr><td>NFR-SCALE-01</td><td>Scalability</td><td>Support 10,000+ accounts and concurrent generation bursts; horizontally scalable workers; queue backpressure with fair scheduling.</td></tr>
+ <tr><td>NFR-AVAIL-01</td><td>Availability</td><td>Core app uptime 99.9% monthly; graceful degradation if a single model provider is down (failover routing).</td></tr>
+ <tr><td>NFR-SEC-01</td><td>Security</td><td>Encryption in transit (TLS 1.2+) and at rest (AES-256); secrets in a managed vault; least-privilege IAM; signed/expiring asset URLs.</td></tr>
+ <tr><td>NFR-SEC-02</td><td>Auth</td><td>OAuth 2.0 / OIDC; optional MFA; rate limiting and abuse detection on generation endpoints.</td></tr>
+ <tr><td>NFR-PRIV-01</td><td>Privacy</td><td>GDPR/CCPA compliant; data export &amp; deletion (right to be forgotten); configurable asset retention.</td></tr>
+ <tr><td>NFR-A11Y-01</td><td>Accessibility</td><td>WCAG 2.1 AA for web; keyboard navigation; screen-reader labels; captions option for narrated exports.</td></tr>
+ <tr><td>NFR-I18N-01</td><td>Internationalization</td><td>UTF-8 throughout; architecture ready for UI localization; multi-language narration at launch.</td></tr>
+ <tr><td>NFR-OBS-01</td><td>Observability</td><td>Centralized logging, metrics, tracing; per-provider success/latency/cost dashboards; alerting on SLOs.</td></tr>
+ <tr><td>NFR-COST-01</td><td>Cost guardrails</td><td>Per-account spend alerts; provider cost caps; automatic fallback to cheaper model on budget breach (configurable).</td></tr>
+</table>
+
+<h2>8. Model Selection &amp; Routing Framework</h2>
+<p>The platform aggregates third-party models and routes requests by user-selected parameters (cost, duration, resolution, speed, quality, use case).</p>
+<table>
+ <tr><th>Model / provider</th><th>Primary strengths</th><th>Max duration</th><th>Resolutions</th><th>Cost tier</th><th>Best business use case</th></tr>
+ <tr><td>Kling O3</td><td>Photorealism, complex physics</td><td>10s</td><td>1080p, 4K</td><td>High</td><td>High-end product launches</td></tr>
+ <tr><td>Runway Gen4</td><td>Camera control, structural consistency</td><td>16s</td><td>1080p, 4K</td><td>High</td><td>Cinematic brand storytelling</td></tr>
+ <tr><td>MiniMax Hailuo</td><td>Character consistency, text generation</td><td>6s</td><td>1080p</td><td>Medium</td><td>Social/influencer ads</td></tr>
+ <tr><td>Seedance 2.0</td><td>Fast generation, vibrant color</td><td>8s</td><td>1080p</td><td>Medium</td><td>Daily promotional posts</td></tr>
+ <tr><td>Seedance v1.5 Pro</td><td>Cost efficiency, stable backgrounds</td><td>4s</td><td>720p, 1080p</td><td>Low</td><td>Batch pharmacy ads</td></tr>
+ <tr><td>Vidu Q3</td><td>Abstract animation, fluid motion</td><td>8s</td><td>1080p</td><td>Medium</td><td>Creative background loops</td></tr>
+</table>
+<div class="flag"><b>Verification required:</b> Model names, versions, max durations, supported resolutions, and pricing change frequently and must be re-validated against each provider's current API and terms before build, and kept in a config-driven capability registry (not hard-coded). Treat the table above as illustrative. Confirm that each provider's ToS permits commercial advertising use, resale via credits, and the intended content categories (esp. health/pharmacy).</div>
+<h3>8.1 Routing logic (FR-CORE-07)</h3>
+<p>Inputs: use case/template, aspect ratio, duration, resolution, quality mode, speed preference, budget. The router filters by hard capability constraints (e.g., 4K, 16s) then ranks candidates by a weighted score over cost, ETA, and a quality prior per use case. It returns a recommended model plus alternatives, each with estimated credits and ETA, and a one-line rationale. Failover (see §16) re-routes on provider error/timeout.</p>
+
+<h2>9. UX / UI</h2>
+<h3>9.1 Desktop web - workspace view</h3>
+<p>Three primary panels. <b>Left:</b> Asset Library &amp; Templates with drag-and-drop of product images. <b>Center:</b> Canvas &amp; Prompt Area with a large video preview; below it a structured prompt box with tabs for "Background Prompt" and "Subject Prompt." <b>Right:</b> Control Inspector with dropdowns for Aspect Ratio, Resolution, Duration, plus a "Business Controls" section with toggles for "Freeze Product" and "Freeze Text." Bottom-right: a dynamic Generate button showing estimated credit cost for current model/settings.</p>
+<h3>9.2 Mobile (iOS/Android) - generation screen</h3>
+<p>Speed-first. Credit balance at top. A large tappable "Upload Product Photo" placeholder. After upload, a bottom-sheet offers Quick Templates (e.g., "Pharmacy Weekly Sale") that pre-fill the prompt. Advanced settings (model, aspect ratio, camera movement) live behind a Settings gear. Generate shows a loading animation, then a playback screen with "Share to Instagram/TikTok" buttons.</p>
+<div class="note"><b>UX additions for v2:</b> explicit empty/error/loading states; a visible credit pre-charge confirmation; in-context disclaimer prompts for regulated categories; an "AI-generated" label affordance on export (see §15).</div>
+
+<h2>10. Technical Architecture</h2>
+<p>Decoupled frontend with a backend orchestration layer.</p>
+<ul>
+ <li><b>Frontend:</b> React.js (Web), React Native (Mobile).</li>
+ <li><b>Backend:</b> Node.js / Express microservices for auth, credit management, and API orchestration.</li>
+ <li><b>Database:</b> PostgreSQL for user data, transaction logs, metadata.</li>
+ <li><b>Storage/CDN:</b> AWS S3 for generated MP4s and uploads; CloudFront CDN.</li>
+ <li><b>AI orchestration layer:</b> A queue system (e.g., RabbitMQ/Celery or SQS) that formats prompts, appends business-safety negative prompts, handles provider rate limits, and manages async callbacks/webhooks from external model providers.</li>
+ <li><b>Provider adapters:</b> A normalized adapter interface per provider so models are added via config, not core code changes.</li>
+ <li><b>Media post-processing:</b> A rendering/compositing service (e.g., FFmpeg-based) for audio mixing, sync, overlays, and - critically - freeze compositing (§12.4).</li>
+</ul>
+<h3>10.1 Key data entities (initial model)</h3>
+<table>
+ <tr><th>Entity</th><th>Key fields</th></tr>
+ <tr><td>User / Account</td><td>id, email, auth, plan, role, brand_kit_id, created_at</td></tr>
+ <tr><td>BrandKit</td><td>id, account_id, palette, fonts, logos[], voice_presets[], music_rules</td></tr>
+ <tr><td>Asset</td><td>id, account_id, type (image/video/audio), source (upload/generated), storage_url, metadata, parent_asset_id</td></tr>
+ <tr><td>Project</td><td>id, account_id, template_id, steps[], status, current_asset_ids</td></tr>
+ <tr><td>GenerationJob</td><td>id, project_id, kind (image/video/audio), provider, params, status, credit_estimate, credit_charged, error</td></tr>
+ <tr><td>CreditLedger</td><td>id, account_id, job_id, delta, balance_after, reason, created_at</td></tr>
+ <tr><td>Subscription</td><td>id, account_id, tier, status, renews_at, billing_provider_ref</td></tr>
+ <tr><td>Template</td><td>id, industry, default_params, prompt_scaffold, asset_slots</td></tr>
+</table>
+<h3>10.2 Generation flow (async)</h3>
+<p><code>Client &rarr; API (validate + estimate + reserve credits) &rarr; Queue &rarr; Worker (build prompt, call provider adapter) &rarr; Provider (async) &rarr; Webhook/poll &rarr; Post-process (mix/overlay/freeze) &rarr; Store to S3 &rarr; Notify client &rarr; Finalize/charge or refund.</code></p>
+
+<h3 id="freeze">10.4 Critical feasibility analysis - "Freeze Product / Freeze Text"</h3>
+<div class="flag">
+<p><b>This is the product's core differentiator and its biggest technical risk.</b> v1's mitigation states "the core pixels remain untouched by the diffusion model." With <b>third-party, API-based</b> video models, the platform generally <b>cannot guarantee untouched pixels</b>, because it does not control the provider's internal diffusion process, and most video APIs do not expose per-region masking/inpainting controls.</p>
+<p><b>Recommended approach (compositing, not promises):</b></p>
+<ol>
+ <li>Animate the <b>background only</b> via the provider (ideally feeding a background-removed or masked source).</li>
+ <li>Locally <b>composite</b> the original, untouched product/text region back on top of every frame using the user-defined mask (alpha-matte + edge feathering), in our own post-processing service.</li>
+ <li>Where a provider supports mask/inpaint or first/last-frame conditioning, use it as an enhancement, not the guarantee.</li>
+ <li>Validate output with an automated check (SSIM/OCR) against the source region before charging credits.</li>
+</ol>
+<p>This makes the guarantee a property of <b>our compositing pipeline</b>, which we control, rather than of the external model. The roadmap and effort estimates must reflect that this is bespoke media-engineering work, not just an API call.</p>
+</div>
+
+<h2>11. Analytics &amp; Instrumentation Plan</h2>
+<ul>
+ <li><b>Funnel events:</b> sign_up, upload_asset, image_generate, image_approve, video_generate, audio_generate, mix_complete, export, share.</li>
+ <li><b>Quality/efficiency:</b> generations_per_export, time_to_first_export, regenerations_per_project, credit_spend_per_export.</li>
+ <li><b>Provider ops:</b> per-model success rate, latency, error class, cost; failover trigger rate.</li>
+ <li><b>Monetization:</b> trial-to-paid conversion, plan mix, credit pack purchases, churn cohort.</li>
+ <li><b>Tooling:</b> product analytics (e.g., a privacy-compliant analytics stack), feature flags for staged rollout, A/B framework for templates/pricing.</li>
+</ul>
+
+<h2 id="pricing">12. Pricing &amp; Business Model</h2>
+<p>Hybrid credit + subscription model for predictable revenue while covering variable API costs.</p>
+<table>
+ <tr><th>Tier</th><th>Monthly price</th><th>Credits included</th><th>Features</th></tr>
+ <tr><td>Pay-As-You-Go (Free)</td><td>$0</td><td>0 (packs of 100 for $10)</td><td>Standard resolution, watermark, low-tier models only.</td></tr>
+ <tr><td>Pro (Small Biz)</td><td>$39/mo</td><td>500 credits</td><td>1080p, no watermark, all models, text/product freeze.</td></tr>
+ <tr><td>Enterprise</td><td>$149/mo</td><td>2,500 credits</td><td>4K, batch generation, custom brand templates, API access.</td></tr>
+</table>
+<p class="small">Credit consumption varies by model. Example basis: Seedance v1.5 = 1 credit/sec; Runway Gen4 = 5 credits/sec.</p>
+<div class="flag">
+<b>Unit-economics review (must resolve before launch):</b>
+<ul>
+ <li>At $10 / 100 credits, 1 credit = $0.10. A 16s Runway render (80 credits) costs the user $8.00; Pro's 500 credits = ~6 such videos, which conflicts with the "15 generations/month" engagement target unless most generations use Seedance/MiniMax-tier models.</li>
+ <li>Build a per-model <b>cost-of-goods table</b> (provider price per second &times; duration &times; resolution multiplier) and set credit prices to hold &ge; 40% gross margin <b>per model</b>, not just on average.</li>
+ <li>Decide whether the freeze/compositing post-processing (our compute) is folded into credit cost.</li>
+ <li>Clarify "Free vs Pay-As-You-Go": currently the $0 tier and pay-as-you-go are the same row; consider separating a true free trial (e.g., starter credits) from credit-pack purchasing.</li>
+ <li>Define rollover/expiry policy for unused credits and overage behavior.</li>
+</ul>
+</div>
+
+<h2>13. Competitive Landscape</h2>
+<table>
+ <tr><th>Category</th><th>Examples</th><th>Our differentiation</th></tr>
+ <tr><td>General AI video tools</td><td>Single-model or general-purpose generators</td><td>Business controls (freeze, brand kit, approval gates), multi-model routing, transparent credit cost.</td></tr>
+ <tr><td>AI ad/creative platforms</td><td>Template-driven ad makers</td><td>True image&rarr;video&rarr;audio pipeline with guaranteed product/text fidelity for regulated retail.</td></tr>
+ <tr><td>Product-photo AI tools</td><td>Background/restaging tools</td><td>We extend restaging into motion + narration + licensed music in one workflow.</td></tr>
+</table>
+<p class="small">Action: complete a detailed competitor feature/price matrix during discovery; validate the "freeze for regulated retail" wedge with target pharmacy/e-commerce users.</p>
+
+<h2>14. Compliance, Legal &amp; Trust</h2>
+<div class="flag"><b>Expanded in v2 - these were under-specified and carry real legal/financial exposure.</b></div>
+<h3>14.1 Regulated &amp; advertising compliance</h3>
+<ul>
+ <li><b>Health / pharmacy advertising:</b> Pharmacy is a flagship use case and a regulated category. Advertising health/OTC/medical products is subject to truth-in-advertising and, in many jurisdictions, sector-specific rules (e.g., FTC in the US; medicine-advertising regulators elsewhere). Provide claim guardrails, required-disclaimer templates, and avoid auto-generating unverified health claims.</li>
+ <li><b>Pricing accuracy:</b> Promotional pricing must be accurate; the product freeze on price text supports this, and exports should encourage validity-period disclaimers.</li>
+ <li><b>Platform ad policies:</b> Outputs should help users comply with Meta/TikTok/Google ad policies (e.g., prohibited claims, AI-content disclosure).</li>
+</ul>
+<h3>14.2 Licensing &amp; rights</h3>
+<ul>
+ <li><b>Background music library:</b> Every curated track needs a clear commercial sync license (royalty-free or licensed) covering paid advertising and social distribution. Maintain license provenance per track.</li>
+ <li><b>AI voices:</b> Confirm TTS provider licenses permit commercial advertising use; if offering branded/cloned voices later, require explicit consent of the voice owner.</li>
+ <li><b>Uploaded assets:</b> Users attest they own/are licensed for uploaded images, audio, logos.</li>
+ <li><b>Model provider terms:</b> Confirm each video/image provider permits commercial/advertising output, resale via credits, and the target content categories.</li>
+</ul>
+<h3>14.3 AI content provenance &amp; transparency</h3>
+<ul>
+ <li>Apply content credentials/provenance (e.g., C2PA) and/or invisible watermarking to AI-generated exports where required.</li>
+ <li>Provide an "AI-generated" labeling affordance to meet platform and regional disclosure rules.</li>
+</ul>
+<h3>14.4 Content moderation &amp; safety</h3>
+<ul>
+ <li>Automated NSFW/violence filters on inputs and outputs; block disallowed categories.</li>
+ <li>Prohibit deceptive deepfakes / unauthorized likeness; misuse reporting and takedown process.</li>
+</ul>
+<h3>14.5 Data privacy &amp; security</h3>
+<ul>
+ <li>GDPR/CCPA compliance; DPA with sub-processors (model providers, cloud); data residency considerations.</li>
+ <li>Clarify whether uploaded assets/prompts may be used by providers for training and surface this to users; prefer no-train options where available.</li>
+ <li>Retention &amp; deletion controls; signed/expiring URLs for stored media.</li>
+</ul>
+
+<h2>15. Risks &amp; Mitigations</h2>
+<table>
+ <tr><th>Risk</th><th>Likelihood / impact</th><th>Mitigation</th></tr>
+ <tr><td>Freeze-masking cannot guarantee untouched pixels via third-party APIs</td><td>High / High</td><td>Own the guarantee via local compositing pipeline (§12.4); automated SSIM/OCR validation; set expectations in UI.</td></tr>
+ <tr><td>Credit economics underwater on premium models</td><td>Med / High</td><td>Per-model COGS table; margin floors per model; routing nudges to cost-effective models (§14).</td></tr>
+ <tr><td>Regulated-advertising / licensing non-compliance</td><td>Med / High</td><td>Claim guardrails, disclaimer templates, licensed music with provenance, provider-ToS review, AI labeling (§15).</td></tr>
+ <tr><td>Third-party API downtime or rate limits</td><td>Med / Med</td><td>Failover routing across providers; if Runway fails, offer Kling/alternative (price-adjusted); circuit breakers and retries.</td></tr>
+ <tr><td>High generation latency hurting UX</td><td>Med / Med</td><td>Async background generation; push/email on completion; clear progress and ETA.</td></tr>
+ <tr><td>Product-label hallucination</td><td>Med / High</td><td>Compositing-based freeze (not just prompting); validation before charging.</td></tr>
+ <tr><td>Aggressive 6-month, multi-platform, 6-model scope</td><td>High / Med</td><td>Phase the differentiator (freeze) early; stagger model integrations; web-first then mobile (§17).</td></tr>
+ <tr><td>Provider model/version churn</td><td>High / Med</td><td>Config-driven capability registry; adapter pattern; automated capability tests.</td></tr>
+</table>
+
+<h2>16. Assumptions &amp; Dependencies</h2>
+<h3>16.1 Assumptions</h3>
+<ul>
+ <li>Target providers expose stable APIs supporting the listed durations/resolutions and permit commercial advertising output.</li>
+ <li>SMB users will accept async (not instant) video generation with notifications.</li>
+ <li>A compositing-based freeze delivers acceptable visual quality for product/text fidelity.</li>
+ <li>Demand exists for transparent, multi-model routing among non-technical SMBs.</li>
+</ul>
+<h3>16.2 Dependencies</h3>
+<ul>
+ <li>Commercial agreements / API access with each model provider.</li>
+ <li>Licensed music catalog and TTS provider with commercial terms.</li>
+ <li>Payment/billing provider (subscriptions + credit packs + invoicing).</li>
+ <li>Cloud infrastructure (compute for compositing, storage, CDN).</li>
+ <li>Legal review for regulated-advertising, licensing, and privacy.</li>
+</ul>
+
+<h2>17. Open Questions</h2>
+<ol>
+ <li>Which providers have confirmed commercial/advertising-permitted API access, and at what price (to finalize the COGS and credit model)?</li>
+ <li>Is compositing-based freeze acceptable quality, or do we need provider-native masking for some use cases?</li>
+ <li>What is the exact free-tier offer (starter credits vs none) and credit rollover/expiry policy?</li>
+ <li>Which launch jurisdictions, and what are their specific health/medicine advertising rules?</li>
+ <li>Do providers train on user content, and can we contractually opt out for our users?</li>
+ <li>Is real, on-device-fast mobile generation required at launch, or is mobile primarily for review/share v1?</li>
+ <li>What localization scope (UI languages) is needed at GA vs narration languages?</li>
+</ol>
+
+<h2>18. Launch Strategy &amp; Roadmap</h2>
+<div class="note">v2 keeps the v1 phases but front-loads the freeze differentiator and de-risks scope. Treat dates as targets pending the open questions above; the original 6-month, 3-platform, 6-model plan is ambitious for the bespoke compositing work.</div>
+<table>
+ <tr><th>Phase</th><th>Timeline</th><th>Key deliverables</th></tr>
+ <tr><td>Phase 1: Alpha</td><td>Months 1-2</td><td>Core backend &amp; orchestration; 3 base model integrations (1 per cost tier); basic web UI; T2V/I2V; credit reservation/refund; <b>early freeze-compositing prototype</b> (validate the differentiator before committing scope).</td></tr>
+ <tr><td>Phase 2: Beta</td><td>Months 3-4</td><td>Production freeze (product/text) with SSIM/OCR validation; narration + licensed music + auto-mix; remaining model integrations; templates; mobile app prototypes (review/share first).</td></tr>
+ <tr><td>Phase 3: Soft launch</td><td>Month 5</td><td>Onboard ~500 waitlisted SMBs; validate credit economy, billing, load; compliance/licensing sign-off.</td></tr>
+ <tr><td>Phase 4: GA</td><td>Month 6</td><td>Public release on Web + iOS + Android; AI-content labeling; marketing to agencies/retail networks.</td></tr>
+ <tr><td>Phase 5: v1.1</td><td>Months 7-8</td><td>Batch generation, Enterprise public API, team workspaces, enhanced real-time rendering, deeper analytics.</td></tr>
+</table>
+
+<h2>19. Glossary</h2>
+<table>
+ <tr><th>Term</th><th>Definition</th></tr>
+ <tr><td>T2V / I2V</td><td>Text-to-Video / Image-to-Video generation.</td></tr>
+ <tr><td>Freeze (product/text)</td><td>Keeping a masked region pixel-stable across all frames while the rest animates.</td></tr>
+ <tr><td>Compositing</td><td>Layering the original masked region back onto generated frames in our pipeline.</td></tr>
+ <tr><td>Routing</td><td>Selecting the best model per request given cost/speed/quality/use case.</td></tr>
+ <tr><td>Credit</td><td>Prepaid usage unit consumed by generation, priced to cover API COGS + margin.</td></tr>
+ <tr><td>COGS</td><td>Cost of goods sold - here, provider API + compute cost per generation.</td></tr>
+ <tr><td>SSIM</td><td>Structural Similarity Index - used to verify a frozen region matches the source.</td></tr>
+ <tr><td>C2PA</td><td>Content provenance standard for labeling AI-generated/edited media.</td></tr>
+</table>
+
+<p class="small" style="margin-top:24pt;">End of document - PRD v2.0. Items marked "TBD" and all entries in §17 (Open Questions) require stakeholder input before build sign-off.</p>
+
+</body>
+</html>
