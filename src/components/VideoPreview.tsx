@@ -49,7 +49,9 @@ export function VideoPreview({
       overlay={overlay}
     >
       <div
-        className={`h-full w-full ${hideSubs ? "overflow-hidden" : ""}`}
+        className={`flex h-full w-full items-center justify-center ${
+          hideSubs ? "overflow-hidden" : ""
+        }`}
       >
         <video
           key={videoUrl}
@@ -57,8 +59,8 @@ export function VideoPreview({
           src={videoUrl}
           className={
             hideSubs
-              ? "block w-full object-cover object-top"
-              : `block h-full w-full ${objectFit}`
+              ? "block max-h-full w-full object-cover object-top"
+              : `block max-h-full max-w-full ${objectFit}`
           }
           style={
             hideSubs
@@ -69,6 +71,7 @@ export function VideoPreview({
           loop
           muted
           playsInline
+          preload="auto"
           controls={false}
           crossOrigin="anonymous"
         />

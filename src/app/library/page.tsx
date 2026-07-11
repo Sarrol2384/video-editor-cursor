@@ -10,7 +10,11 @@ export default async function LibraryPage() {
   if (!user) redirect("/login");
 
   const assets = await prisma.asset.findMany({
-    where: { userId: user.id },
+    where: {
+      userId: user.id,
+      type: "video",
+      source: "export",
+    },
     orderBy: { createdAt: "desc" },
     include: {
       project: { select: { id: true, name: true } },
@@ -30,14 +34,15 @@ export default async function LibraryPage() {
       <main className="mx-auto max-w-7xl px-4 py-8">
         <h1 className="text-2xl font-bold text-gray-900">Asset Library</h1>
         <p className="mt-1 text-gray-600">
-          All your uploaded and generated assets
+          Exported final videos saved from your projects
         </p>
 
         <section className="mt-8">
-          <h2 className="text-lg font-semibold text-gray-900">All Assets</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Exported Videos</h2>
           {assets.length === 0 ? (
             <div className="card mt-4 text-center text-gray-500">
-              No assets yet. Create a project to get started.
+              No exported videos yet. Finish a project and use Export to save your
+              final video here.
             </div>
           ) : (
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

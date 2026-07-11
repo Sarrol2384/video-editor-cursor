@@ -9,7 +9,7 @@ import {
   loadImage,
   loadOverlayImages,
 } from "@/lib/canvas-utils";
-import { renderFrame, renderVideoFrame } from "@/lib/canvas-renderer";
+import { renderFrame, renderOverlayLayers, renderVideoFrame } from "@/lib/canvas-renderer";
 import { stopActiveAudioPreview } from "@/lib/audioPreview";
 import {
   hasExportAudio,
@@ -77,6 +77,19 @@ function rejectOnAbort(signal?: AbortSignal): Promise<never> | null {
   });
 }
 
+async function seekVideo(video: HTMLVideoElement, time: number): Promise<void> {
+  const target = Math.max(0, time);
+  if (Math.abs(video.currentTime - target) < 0.02) return;
+  await new Promise<void>((resolve) => {
+    const onSeeked = () => {
+      video.removeEventListener("seeked", onSeeked);
+      resolve();
+    };
+    video.addEventListener("seeked", onSeeked);
+    video.currentTime = target;
+  });
+}
+
 async function loadVideoElement(
   srcUrl: string,
   signal?: AbortSignal
@@ -137,6 +150,32 @@ async function loadAllOverlayImages(
   const merged = new Map(base);
   qr.forEach((img, key) => merged.set(key, img));
   return merged;
+}
+
+async function renderOverlayPng(settings: ProjectSettings): Promise<Blob> {
+  await waitForExportFonts(settings.textLayers);
+  const overlayImages = await loadAllOverlayImages(
+    settings.textLayers,
+    ASSET_LOAD_TIMEOUT_MS
+  );
+  const baseWidth = getCanvasBaseWidth(settings.resolution);
+  const { width, height } = getAspectDimensions(
+    settings.aspectRatio,
+    baseWidth
+  );
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not supported");
+  renderOverlayLayers(ctx, settings, 0, width, height, overlayImages);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) =>
+        blob ? resolve(blob) : reject(new Error("Failed to render text overlay")),
+      "image/png"
+    );
+  });
 }
 
 export function ExportButton({
@@ -395,14 +434,12 @@ export function ExportButton({
       }
 
       const startRecording = async () => {
-        if (embeddedSpeech) {
-          video.muted = true;
-        }
+        video.muted = true;
 
         try {
           await video.play();
         } catch {
-          /* draw frames even if autoplay blocked */
+          /* draw frames even if autoplay blocked — seek fallback below */
         }
 
         const recordStream = canvasStream;
@@ -445,14 +482,17 @@ export function ExportButton({
         const durationMs = recordDurationSec * 1000;
         const startTime = performance.now();
         recorder.start(100);
+        const useRvfc =
+          !embeddedSpeech &&
+          sourceVideoDurationSec > 0 &&
+          typeof video.requestVideoFrameCallback === "function";
 
-        const tick = () => {
+        const drawFrame = async (elapsed: number) => {
           if (signal?.aborted) {
             onAbort();
             return;
           }
 
-          const elapsed = performance.now() - startTime;
           const progressPct = Math.min(elapsed / durationMs, 1);
           setProgress(Math.round(10 + progressPct * 80));
 
@@ -471,21 +511,34 @@ export function ExportButton({
               overlayImages
             );
           } else {
-            if (sourceVideoDurationSec > 0) {
-              const videoProgress = shouldLoop
+            let videoProgress: number;
+            if (sourceVideoDurationSec > 0 && !video.paused && video.currentTime > 0) {
+              videoProgress = shouldLoop
+                ? (video.currentTime % sourceVideoDurationSec) /
+                  sourceVideoDurationSec
+                : Math.min(video.currentTime / sourceVideoDurationSec, 1);
+            } else if (sourceVideoDurationSec > 0) {
+              videoProgress = shouldLoop
                 ? (elapsed % (sourceVideoDurationSec * 1000)) /
                   (sourceVideoDurationSec * 1000)
                 : progressPct;
-              video.currentTime = Math.min(
-                videoProgress * sourceVideoDurationSec,
-                Math.max(0, sourceVideoDurationSec - 0.04)
-              );
+              if (!useRvfc) {
+                await seekVideo(
+                  video,
+                  Math.min(
+                    videoProgress * sourceVideoDurationSec,
+                    Math.max(0, sourceVideoDurationSec - 0.04)
+                  )
+                );
+              }
+            } else {
+              videoProgress = progressPct;
             }
             renderVideoFrame(
               ctx,
               video,
               settings,
-              progressPct,
+              videoProgress,
               width,
               height,
               overlayImages
@@ -497,13 +550,25 @@ export function ExportButton({
             : elapsed >= durationMs;
 
           if (!finished) {
-            requestAnimationFrame(tick);
+            if (useRvfc) {
+              video.requestVideoFrameCallback(() => {
+                void drawFrame(performance.now() - startTime);
+              });
+            } else {
+              requestAnimationFrame(() => void drawFrame(performance.now() - startTime));
+            }
           } else {
             recorder.stop();
           }
         };
 
-        requestAnimationFrame(tick);
+        if (useRvfc) {
+          video.requestVideoFrameCallback(() => {
+            void drawFrame(0);
+          });
+        } else {
+          requestAnimationFrame(() => void drawFrame(0));
+        }
       };
 
       void startRecording().catch(reject);
@@ -522,6 +587,22 @@ export function ExportButton({
       throw new Error("Failed to fetch generated video");
     }
     return response.blob();
+  }
+
+  async function exportViaServerOverlay(
+    exportDurationSec: number,
+    signal?: AbortSignal
+  ): Promise<{ url: string; shareToken?: string }> {
+    setPhase("loading");
+    setProgress(25);
+    const overlayBlob = await renderOverlayPng(settings);
+    setPhase("converting");
+    setProgress(85);
+    const formData = new FormData();
+    formData.append("overlayExport", "1");
+    formData.append("overlay", overlayBlob, "overlay.png");
+    formData.append("exportDurationSec", String(exportDurationSec));
+    return postExportForm(formData, signal);
   }
 
   async function postExportForm(
@@ -674,6 +755,24 @@ export function ExportButton({
         videoDurationSec = video.duration;
         exportDurationSec = resolveExportDurationSec(settings, videoDurationSec);
         videoBlob = await fetchExistingVideoBlob(videoUrl, signal);
+      } else if (
+        videoUrl &&
+        needsTextBurnIn &&
+        settings.freezeText &&
+        !embeddedSpeech
+      ) {
+        const video = await loadVideoElement(videoUrl, signal);
+        videoDurationSec = video.duration;
+        exportDurationSec = resolveExportDurationSec(settings, videoDurationSec);
+        setProgress(10);
+        const { url: mp4Url } = await exportViaServerOverlay(
+          exportDurationSec,
+          signal
+        );
+        downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
+        onExported?.(mp4Url);
+        setProgress(100);
+        return;
       } else if (videoUrl) {
         canvasExport = true;
         const video = await loadVideoElement(videoUrl, signal);
@@ -848,7 +947,7 @@ export function ExportButton({
         </p>
       )}
 
-      {videoUrl && !exporting && (
+      {videoUrl && !exporting && embeddedSpeech && (
         <>
           <button
             type="button"
@@ -857,15 +956,13 @@ export function ExportButton({
           >
             Download cropped lip-sync video (.mp4)
           </button>
-          {embeddedSpeech && (
-            <button
-              type="button"
-              onClick={() => void copyShareLink()}
-              className="btn-secondary w-full text-sm"
-            >
-              {shareLinkCopied ? "Share link copied!" : "Copy share link (clickable CTAs)"}
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => void copyShareLink()}
+            className="btn-secondary w-full text-sm"
+          >
+            {shareLinkCopied ? "Share link copied!" : "Copy share link (clickable CTAs)"}
+          </button>
         </>
       )}
 

@@ -124,8 +124,8 @@ export function ControlInspector({ settings, onChange }: ControlInspectorProps) 
           ))}
         </div>
         <p className="mt-1 text-xs text-gray-500">
-          Controls AI video camera motion. Medium or High adds visible movement.
-          Use Kling O3 Standard for best quality.
+          Controls AI video camera motion. Avoids zoom-in on product packs — prefers
+          static camera or slow pull-back. Kling O3 works best for lifestyle ads with people.
         </p>
       </div>
 

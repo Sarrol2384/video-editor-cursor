@@ -167,9 +167,9 @@ const PHARMACY_VISUAL_STYLES: VisualStyleSuggestion[] = [
   },
   {
     id: "pharm-life-pharmacy",
-    label: "In-store consultation",
+    label: "Home consultation",
     imageStyle: "lifestyle",
-    hint: "Friendly pharmacist and customer at counter, trusted local pharmacy mood.",
+    hint: "Coloured South African caregiver at home with product on table — trusted care mood, no store logos or pharmacy signage.",
   },
   {
     id: "pharm-min-catalog",

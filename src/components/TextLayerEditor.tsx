@@ -20,7 +20,11 @@ import {
 } from "@/lib/textFonts";
 import { buildTextSuggestions } from "@/lib/productSuggestions";
 import { cssTextEffectStyle, resolveBackgroundFill } from "@/lib/textEffects";
-import { resolveCtaQrUrl } from "@/lib/qrOverlay";
+import {
+  FIXED_QR_LAYOUT,
+  shouldRenderProjectQr,
+  resolveCtaQrUrl,
+} from "@/lib/qrOverlay";
 
 function overlayFontSize(layer: TextLayer, settings: ProjectSettings): number {
   const { height, displayHeight } = getPreviewLayout(
@@ -233,6 +237,22 @@ export function TextLayerEditor({
           </div>
         );
       })}
+      {shouldRenderProjectQr(layers) && (
+        <div
+          className="pointer-events-none absolute rounded border-2 border-dashed border-teal-400/80 bg-white/90"
+          style={{
+            left: `${FIXED_QR_LAYOUT.x * 100}%`,
+            top: `${FIXED_QR_LAYOUT.y * 100}%`,
+            width: `${FIXED_QR_LAYOUT.sizeFraction * 100}%`,
+            aspectRatio: "1",
+          }}
+          aria-hidden
+        >
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold uppercase tracking-wide text-teal-700">
+            QR
+          </span>
+        </div>
+      )}
     </div>
   );
 
@@ -265,6 +285,9 @@ export function TextLayerEditor({
             Frame: {settings.aspectRatio} ·{" "}
             {settings.imageFit === "cover" ? "Fill (cropped)" : "Fit (full image)"}.
             {" "}Drag text layers on the preview to reposition them.
+            {shouldRenderProjectQr(layers)
+              ? " QR appears in the bottom-left dashed box when enabled on a layer with a link."
+              : ""}
             Text overlays are for preview, PNG export, and share-link buttons.
             For talking-head MP4s, export lip-sync video and add text in CapCut or
             similar.
@@ -732,9 +755,13 @@ export function TextLayerEditor({
                               : "https://example.com"
                         }
                         value={selected.linkUrl || ""}
-                        onChange={(e) =>
-                          updateLayer(selected.id, { linkUrl: e.target.value })
-                        }
+                        onChange={(e) => {
+                          const linkUrl = e.target.value;
+                          updateLayer(selected.id, {
+                            linkUrl,
+                            ...(linkUrl.trim() ? {} : { showQr: undefined }),
+                          });
+                        }}
                       />
                       {selected.linkUrl && resolveCtaQrUrl(selected) && (
                         <p className="mt-1 text-xs text-gray-500">
@@ -743,17 +770,39 @@ export function TextLayerEditor({
                       )}
                     </div>
                     <label className="flex items-center justify-between">
-                      <span className="text-sm font-medium">Show QR code on video</span>
+                      <span className="text-sm font-medium">
+                        Show QR code (fixed bottom-left)
+                      </span>
                       <input
                         type="checkbox"
                         checked={Boolean(selected.showQr)}
                         disabled={!selected.linkUrl?.trim()}
-                        onChange={(e) =>
-                          updateLayer(selected.id, { showQr: e.target.checked })
-                        }
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          if (checked && !selected.linkUrl?.trim()) return;
+                          updateLayers(
+                            layers.map((l) => ({
+                              ...l,
+                              showQr:
+                                l.id === selected.id
+                                  ? checked
+                                    ? true
+                                    : undefined
+                                  : checked
+                                    ? undefined
+                                    : l.showQr,
+                            }))
+                          );
+                        }}
                         className="h-4 w-4 rounded border-gray-300 text-brand-600"
                       />
                     </label>
+                    {selected.showQr && (
+                      <p className="text-xs text-gray-500">
+                        QR is pinned to the bottom-left corner on export. Place
+                        your CTA text to the right so they do not overlap.
+                      </p>
+                    )}
                   </div>
                     </>
                   )}

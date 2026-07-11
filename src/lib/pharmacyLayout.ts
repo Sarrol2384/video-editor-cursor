@@ -56,7 +56,7 @@ export function buildPharmacyLayout(pharmacyName = "E-KEM PHARMACY"): TextLayer[
     }),
     createTextLayer({
       text: "Available Now",
-      x: 0.5,
+      x: 0.62,
       y: 0.92,
       fontSize: 20,
       color: "#0d9488",

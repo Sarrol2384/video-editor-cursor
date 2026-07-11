@@ -6,10 +6,19 @@ import { resolveCtaQrUrl } from "@/lib/qrOverlay";
 import { toAbsoluteMediaUrl } from "@/lib/appUrl";
 import { shouldHideAvatarSubtitles } from "@/lib/avatarSubtitles";
 
-interface ShareRow {
-  id: string;
-  name: string;
-  settings: string;
+function findProjectByShareToken(token: string) {
+  return prisma.project.findMany({
+    select: { id: true, name: true, settings: true },
+  }).then((projects) =>
+    projects.find((p) => {
+      try {
+        const parsed = JSON.parse(p.settings) as { shareToken?: string };
+        return parsed.shareToken === token;
+      } catch {
+        return false;
+      }
+    })
+  );
 }
 
 export async function GET(
@@ -19,13 +28,7 @@ export async function GET(
   const token = params.token?.trim();
   if (!token) return jsonError("Invalid share link", 400);
 
-  const rows = await prisma.$queryRaw<ShareRow[]>`
-    SELECT id, name, settings FROM "Project"
-    WHERE settings::jsonb->>'shareToken' = ${token}
-    LIMIT 1
-  `;
-
-  const row = rows[0];
+  const row = await findProjectByShareToken(token);
   if (!row) return jsonError("Share link not found", 404);
 
   const settings = parseSettings(row.settings, row.name);

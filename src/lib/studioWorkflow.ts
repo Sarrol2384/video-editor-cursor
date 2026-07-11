@@ -1,4 +1,4 @@
-import type { ProjectSettings } from "@/lib/types";
+import type { ProjectSettings, AiProductContext, AiPromptSuggestions } from "@/lib/types";
 import { inferWorkflowMode } from "@/lib/brands";
 import { resolveAgencyPostFormat } from "@/lib/agencyPostFormat";
 
@@ -48,6 +48,33 @@ export function shouldClearVideoForImageChange(
     return updates.selectedImageUrl !== prevImage;
   }
 
+  return false;
+}
+
+/** PATCH payload — server treats `null` as "remove this field". */
+export function aiSuggestionsClearPatch(): Partial<ProjectSettings> {
+  return {
+    aiPromptSuggestions: null as unknown as AiPromptSuggestions,
+    aiProductContext: null as unknown as AiProductContext,
+  };
+}
+
+export function shouldClearAiSuggestions(
+  prev: ProjectSettings,
+  updates: Partial<ProjectSettings>
+): boolean {
+  if (
+    updates.sourceImageUrl !== undefined &&
+    updates.sourceImageUrl !== prev.sourceImageUrl
+  ) {
+    return true;
+  }
+  if (
+    updates.productName !== undefined &&
+    updates.productName !== prev.productName
+  ) {
+    return true;
+  }
   return false;
 }
 

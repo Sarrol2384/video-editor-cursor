@@ -18,6 +18,7 @@ import {
 } from "@/lib/audioPreview";
 import { FetchTimeoutError, fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { getNarrationDurationSec } from "@/lib/exportAudio";
+import { AVATAR_MAX_DURATION_SEC } from "@/lib/avatarVideo";
 import { estimateCredits, getModelById, isAvatarVideoModel } from "@/lib/models";
 import { AGENCY_STOCK_IMAGE_URL, inferWorkflowMode } from "@/lib/brands";
 import {
@@ -27,12 +28,14 @@ import {
   settingsForAgencyPostFormat,
 } from "@/lib/agencyPostFormat";
 import {
+  aiSuggestionsClearPatch,
   getStepLabels,
   isAgencyWorkflow,
   isFashionWorkflow,
   isPipelineStepComplete,
   maxReachableStep,
   resolveStudioStep,
+  shouldClearAiSuggestions,
   shouldClearVideoForImageChange,
 } from "@/lib/studioWorkflow";
 
@@ -65,10 +68,7 @@ const TextLayerEditor = dynamic(
   () => import("@/components/TextLayerEditor").then((m) => m.TextLayerEditor),
   { loading: () => <PanelSkeleton tall /> }
 );
-const ExportButton = dynamic(
-  () => import("@/components/ExportButton").then((m) => m.ExportButton),
-  { loading: () => <PanelSkeleton /> }
-);
+import { ExportButton } from "@/components/ExportButton";
 const AvatarSubtitleToggle = dynamic(
   () =>
     import("@/components/AvatarSubtitleToggle").then((m) => m.AvatarSubtitleToggle),
@@ -203,18 +203,24 @@ export default function StudioPage() {
           updates.generatedVideoUrl === null ||
             updates.videoHasEmbeddedAudio === null
         );
+      const clearAi = shouldClearAiSuggestions(prev, updates);
       merged = { ...prev, ...updates };
       if (clearVideo) {
         delete merged.generatedVideoUrl;
         delete merged.videoHasEmbeddedAudio;
       }
-      apiSettings = clearVideo
-        ? {
-            ...merged,
-            generatedVideoUrl: null,
-            videoHasEmbeddedAudio: null,
-          }
-        : { ...merged };
+      if (clearAi) {
+        delete merged.aiPromptSuggestions;
+        delete merged.aiProductContext;
+      }
+      apiSettings = { ...merged };
+      if (clearVideo) {
+        apiSettings.generatedVideoUrl = null;
+        apiSettings.videoHasEmbeddedAudio = null;
+      }
+      if (clearAi) {
+        Object.assign(apiSettings, aiSuggestionsClearPatch());
+      }
       return merged;
     });
     await fetch(`/api/projects/${projectId}`, {
@@ -258,7 +264,17 @@ export default function StudioPage() {
         return;
       }
 
-      await saveSettings({ sourceImageUrl: data.asset.storageUrl }, 0);
+      await saveSettings(
+        {
+          sourceImageUrl: data.asset.storageUrl,
+          productName: null as unknown as string,
+          scenePrompt: "",
+          benefitsPrompt: "",
+          subjectPrompt: "",
+          backgroundPrompt: "",
+        },
+        0
+      );
       setMessage("Image uploaded successfully!");
       setStep(1);
     } catch {
@@ -266,6 +282,32 @@ export default function StudioPage() {
     } finally {
       setUploading(false);
     }
+  }
+
+  async function handleRemoveSourceImage() {
+    if (generating) {
+      cancelImageGeneration();
+    }
+    setVariants([]);
+    setSelectedVariant(null);
+    setImageProvider(null);
+    setMessage("");
+    setError("");
+    await saveSettings(
+      {
+        sourceImageUrl: null as unknown as string,
+        selectedImageUrl: null as unknown as string,
+        selectedImageVariantId: null as unknown as string,
+        imageStyle: null as unknown as string,
+        productName: null as unknown as string,
+        scenePrompt: "",
+        benefitsPrompt: "",
+        subjectPrompt: "",
+        backgroundPrompt: "",
+      },
+      0
+    );
+    setStep(0);
   }
 
   function cancelImageGeneration() {
@@ -505,7 +547,10 @@ export default function StudioPage() {
       setStep(3);
       setMessage(
         nextSettings.generatedNarrationDuration
-          ? `Audio is ${nextSettings.generatedNarrationDuration.toFixed(1)}s — video duration set to ${nextSettings.duration}s. Generate video next.`
+          ? isTalkingHead &&
+            nextSettings.generatedNarrationDuration > AVATAR_MAX_DURATION_SEC
+            ? `Audio is ${nextSettings.generatedNarrationDuration.toFixed(1)}s — shorten your script to ${AVATAR_MAX_DURATION_SEC}s or less before generating talking-head video.`
+            : `Audio is ${nextSettings.generatedNarrationDuration.toFixed(1)}s — video duration set to ${nextSettings.duration}s. Generate video next.`
           : "Audio generated! Generate video next."
       );
     } catch {
@@ -770,6 +815,7 @@ export default function StudioPage() {
                 )}
                 <UploadDropzone
                   onUpload={handleUpload}
+                  onRemove={() => void handleRemoveSourceImage()}
                   currentImage={settings.sourceImageUrl}
                   loading={uploading}
                 />
@@ -809,12 +855,20 @@ export default function StudioPage() {
                         : "Create Ad from Product Photo"}
                   </h2>
                   {settings.sourceImageUrl && (
-                    <div className="mb-4 overflow-hidden rounded-lg border border-gray-200">
+                    <div className="relative mb-4 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-3">
                       <img
                         src={settings.sourceImageUrl}
                         alt="Uploaded product"
                         className="mx-auto max-h-48 object-contain"
                       />
+                      <button
+                        type="button"
+                        onClick={() => void handleRemoveSourceImage()}
+                        disabled={generating}
+                        className="absolute right-3 top-3 rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 shadow-sm ring-1 ring-gray-200 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                      >
+                        Remove photo
+                      </button>
                     </div>
                   )}
                   {settings.sourceImageUrl && (
@@ -1038,6 +1092,10 @@ export default function StudioPage() {
                 <EnhancePanel
                   settings={settings}
                   onChange={(u) => saveSettings(u)}
+                  projectId={projectId}
+                  sourceImageUrl={settings.sourceImageUrl}
+                  credits={credits}
+                  onCreditsChange={setCredits}
                 />
               </div>
             )}
@@ -1165,9 +1223,18 @@ export default function StudioPage() {
                   </p>
                 )}
                 {isTalkingHead && settings.generatedNarrationUrl && (
-                  <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-800">
+                  <p
+                    className={`rounded-lg border px-3 py-2 text-xs ${
+                      avatarNarrationDuration > AVATAR_MAX_DURATION_SEC
+                        ? "border-amber-200 bg-amber-50 text-amber-900"
+                        : "border-green-200 bg-green-50 text-green-800"
+                    }`}
+                  >
                     Narration ready ({Math.round(avatarNarrationDuration)}s). Video
-                    length follows your voice track.
+                    length follows your voice track
+                    {avatarNarrationDuration > AVATAR_MAX_DURATION_SEC
+                      ? ` — shorten to ${AVATAR_MAX_DURATION_SEC}s or less before generating.`
+                      : ` (up to ${AVATAR_MAX_DURATION_SEC}s).`}
                   </p>
                 )}
                 <button
@@ -1179,7 +1246,9 @@ export default function StudioPage() {
                     (!agency && !settings.generatedNarrationUrl) ||
                     (agency &&
                       agencyNarrationRequired(settings) &&
-                      !settings.generatedNarrationUrl)
+                      !settings.generatedNarrationUrl) ||
+                    (isTalkingHead &&
+                      avatarNarrationDuration > AVATAR_MAX_DURATION_SEC)
                   }
                   className="btn-primary w-full py-3"
                 >

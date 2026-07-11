@@ -30,10 +30,12 @@ export function AssetCard({ asset }: AssetCardProps) {
           />
         )}
         {asset.type === "video" && asset.storageUrl && (
-          <img
+          <video
             src={asset.storageUrl}
-            alt="Video preview"
             className="h-full w-full object-contain"
+            muted
+            playsInline
+            preload="metadata"
           />
         )}
         {asset.type === "audio" && (

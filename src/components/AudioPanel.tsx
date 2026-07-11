@@ -3,8 +3,12 @@
 import { useMemo } from "react";
 import type { ProjectSettings } from "@/lib/types";
 import type { AgencyPostFormat } from "@/lib/agencyPostFormat";
+import {
+  AVATAR_MAX_DURATION_SEC,
+  avatarScriptWordBudget,
+} from "@/lib/avatarVideo";
 import { PromptField } from "@/components/PromptField";
-import { buildNarrationSuggestions } from "@/lib/productSuggestions";
+import { buildNarrationSuggestions, shouldShowProductSuggestions } from "@/lib/productSuggestions";
 import { getVoiceLabel, isGeneratedNarrationStale, isGeneratedNarrationVoiceUnknown } from "@/lib/voiceMapping";
 
 const VOICES = [
@@ -26,7 +30,7 @@ const MOODS = [
 function agencyScriptHelper(format: AgencyPostFormat): string {
   switch (format) {
     case "talking-head":
-      return "This is what the person will say on camera (lip-sync).";
+      return `Spoken on camera (lip-sync). Aim for ~${avatarScriptWordBudget()} words or less (${AVATAR_MAX_DURATION_SEC}s max).`;
     case "cinematic":
       return "Voice-over played over the video at export.";
     case "static":
@@ -90,6 +94,7 @@ export function AudioPanel({
             : "Enter your product description or ad script..."
         }
         suggestions={narrationSuggestions}
+        showSuggestions={shouldShowProductSuggestions(settings)}
       />
       {canCopyCaption && (
         <button

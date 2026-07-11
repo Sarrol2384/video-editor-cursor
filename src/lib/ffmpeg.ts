@@ -21,6 +21,9 @@ export interface AudioMuxOptions {
   cropAvatarSubtitles?: boolean;
   outputWidth?: number;
   outputHeight?: number;
+  imageFit?: "contain" | "cover";
+  /** Transparent PNG burned onto every video frame (static text/QR). */
+  overlayImagePath?: string;
 }
 
 function resolveFfmpegExecutable(): string {
@@ -91,7 +94,63 @@ function videoInput(
   return ["-stream_loop", String(Math.min(loops, 30)), "-i", inputPath];
 }
 
+function overlayExtraInput(overlayPath?: string): string[] {
+  return overlayPath ? ["-i", overlayPath] : [];
+}
+
+function ffmpegFrameFitFilter(audio?: AudioMuxOptions): string | null {
+  if (!audio?.outputWidth || !audio?.outputHeight) return null;
+  const w = audio.outputWidth;
+  const h = audio.outputHeight;
+  if ((audio.imageFit || "contain") === "cover") {
+    return (
+      `scale=${w}:${h}:force_original_aspect_ratio=increase,` +
+      `crop=${w}:${h}`
+    );
+  }
+  return (
+    `scale=${w}:${h}:force_original_aspect_ratio=decrease,` +
+    `pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=black`
+  );
+}
+
+function videoBaseGraph(audio?: AudioMuxOptions): { filter: string; label: string } {
+  const fit = ffmpegFrameFitFilter(audio);
+  const crop =
+    audio?.cropAvatarSubtitles && audio.outputWidth && audio.outputHeight
+      ? ffmpegAvatarSubtitleCropFilter(audio.outputWidth, audio.outputHeight)
+      : null;
+
+  if (crop && fit) {
+    return { filter: `[0:v]${crop},${fit}[vbase]`, label: "[vbase]" };
+  }
+  if (crop) {
+    return { filter: `[0:v]${crop}[vbase]`, label: "[vbase]" };
+  }
+  if (fit) {
+    return { filter: `[0:v]${fit}[vbase]`, label: "[vbase]" };
+  }
+  return { filter: "", label: "[0:v]" };
+}
+
+function videoOverlayGraph(
+  overlayInputIndex: number,
+  audio?: AudioMuxOptions
+): string {
+  const base = videoBaseGraph(audio);
+  const prefix = base.filter ? `${base.filter};` : "";
+  return (
+    `${prefix}${base.label}[${overlayInputIndex}:v]` +
+    `overlay=0:0:format=auto,format=yuv420p[vout]`
+  );
+}
+
 function videoFilterArgs(audio?: AudioMuxOptions): string[] {
+  if (audio?.overlayImagePath) return [];
+  const fitOnly = ffmpegFrameFitFilter(audio);
+  if (fitOnly && !audio?.cropAvatarSubtitles) {
+    return ["-vf", `${fitOnly},format=yuv420p`];
+  }
   if (
     !audio?.cropAvatarSubtitles ||
     !audio.outputWidth ||
@@ -101,8 +160,16 @@ function videoFilterArgs(audio?: AudioMuxOptions): string[] {
   }
   return [
     "-vf",
-    ffmpegAvatarSubtitleCropFilter(audio.outputWidth, audio.outputHeight),
+    `${ffmpegAvatarSubtitleCropFilter(audio.outputWidth, audio.outputHeight)},format=yuv420p`,
   ];
+}
+
+function videoMapLabel(audio?: AudioMuxOptions): string {
+  return audio?.overlayImagePath ? "[vout]" : "0:v:0";
+}
+
+function joinFilterComplex(...parts: Array<string | undefined | null>): string {
+  return parts.filter((p): p is string => Boolean(p)).join(";");
 }
 
 function tailArgs(
@@ -151,22 +218,29 @@ function buildFfmpegArgs(
       audio!.musicMood as string,
       targetDurationSec
     );
-    const vf = videoFilterArgs(audio);
+    const overlayExtra = overlayExtraInput(audio?.overlayImagePath);
+    const overlayIdx = overlayExtra.length > 0 ? 2 : -1;
+    const audioFilter =
+      `[0:a]aformat=sample_fmts=fltp:channel_layouts=stereo[voice];` +
+      `[1:a]volume=${musicVol},lowpass=f=${lowpass},aformat=sample_fmts=fltp:channel_layouts=stereo[m];` +
+      `[voice][m]amix=inputs=2:duration=first:dropout_transition=0,volume=1.2[aout]`;
+    const filter =
+      overlayIdx >= 0
+        ? joinFilterComplex(videoOverlayGraph(overlayIdx, audio), audioFilter)
+        : audioFilter;
     return [
       "-y",
       "-i",
       inputPath,
-      ...vf,
       "-f",
       "lavfi",
       "-i",
       musicInput,
+      ...overlayExtra,
       "-filter_complex",
-      `[0:a]aformat=sample_fmts=fltp:channel_layouts=stereo[voice];` +
-        `[1:a]volume=${musicVol},lowpass=f=${lowpass},aformat=sample_fmts=fltp:channel_layouts=stereo[m];` +
-        `[voice][m]amix=inputs=2:duration=first:dropout_transition=0,volume=1.2[aout]`,
+      filter,
       "-map",
-      "0:v:0",
+      videoMapLabel(audio),
       "-map",
       "[aout]",
       ...tailArgs(baseVideo, baseAudio, tail, outputPath, targetDurationSec),
@@ -174,6 +248,23 @@ function buildFfmpegArgs(
   }
 
   if (useEmbedded) {
+    const overlayExtra = overlayExtraInput(audio?.overlayImagePath);
+    const overlayIdx = overlayExtra.length > 0 ? 1 : -1;
+    if (overlayIdx >= 0) {
+      return [
+        "-y",
+        "-i",
+        inputPath,
+        ...overlayExtra,
+        "-filter_complex",
+        videoOverlayGraph(overlayIdx, audio),
+        "-map",
+        videoMapLabel(audio),
+        "-map",
+        "0:a:0?",
+        ...tailArgs(baseVideo, baseAudio, tail, outputPath, targetDurationSec),
+      ];
+    }
     return [
       "-y",
       "-i",
@@ -192,6 +283,16 @@ function buildFfmpegArgs(
       audio!.musicMood as string,
       targetDurationSec
     );
+    const overlayExtra = overlayExtraInput(audio?.overlayImagePath);
+    const overlayIdx = overlayExtra.length > 0 ? 3 : -1;
+    const audioFilter =
+      `[1:a]volume=${narrVol},aformat=sample_fmts=fltp:channel_layouts=stereo[n];` +
+      `[2:a]volume=${musicVol},lowpass=f=${lowpass},aformat=sample_fmts=fltp:channel_layouts=stereo[m];` +
+      `[n][m]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
+    const filter =
+      overlayIdx >= 0
+        ? joinFilterComplex(videoOverlayGraph(overlayIdx, audio), audioFilter)
+        : audioFilter;
     return [
       "-y",
       ...vIn,
@@ -201,12 +302,11 @@ function buildFfmpegArgs(
       "lavfi",
       "-i",
       musicInput,
+      ...overlayExtra,
       "-filter_complex",
-      `[1:a]volume=${narrVol},aformat=sample_fmts=fltp:channel_layouts=stereo[n];` +
-        `[2:a]volume=${musicVol},lowpass=f=${lowpass},aformat=sample_fmts=fltp:channel_layouts=stereo[m];` +
-        `[n][m]amix=inputs=2:duration=first:dropout_transition=0[aout]`,
+      filter,
       "-map",
-      "0:v:0",
+      videoMapLabel(audio),
       "-map",
       "[aout]",
       ...tailArgs(baseVideo, baseAudio, tail, outputPath, targetDurationSec),
@@ -218,6 +318,13 @@ function buildFfmpegArgs(
       audio!.musicMood as string,
       targetDurationSec
     );
+    const overlayExtra = overlayExtraInput(audio?.overlayImagePath);
+    const overlayIdx = overlayExtra.length > 0 ? 2 : -1;
+    const audioFilter = `[1:a]volume=${musicVol},lowpass=f=${lowpass},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`;
+    const filter =
+      overlayIdx >= 0
+        ? joinFilterComplex(videoOverlayGraph(overlayIdx, audio), audioFilter)
+        : audioFilter;
     return [
       "-y",
       ...vIn,
@@ -225,10 +332,11 @@ function buildFfmpegArgs(
       "lavfi",
       "-i",
       musicInput,
+      ...overlayExtra,
       "-filter_complex",
-      `[1:a]volume=${musicVol},lowpass=f=${lowpass},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`,
+      filter,
       "-map",
-      "0:v:0",
+      videoMapLabel(audio),
       "-map",
       "[aout]",
       ...tailArgs(baseVideo, baseAudio, tail, outputPath, targetDurationSec),
@@ -236,17 +344,42 @@ function buildFfmpegArgs(
   }
 
   if (narrationPath) {
+    const overlayExtra = overlayExtraInput(audio?.overlayImagePath);
+    const overlayIdx = overlayExtra.length > 0 ? 2 : -1;
+    const audioFilter = `[1:a]volume=${narrVol},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`;
+    const filter =
+      overlayIdx >= 0
+        ? joinFilterComplex(videoOverlayGraph(overlayIdx, audio), audioFilter)
+        : audioFilter;
     return [
       "-y",
       ...vIn,
       "-i",
       narrationPath,
+      ...overlayExtra,
       "-filter_complex",
-      `[1:a]volume=${narrVol},aformat=sample_fmts=fltp:channel_layouts=stereo[aout]`,
+      filter,
       "-map",
-      "0:v:0",
+      videoMapLabel(audio),
       "-map",
       "[aout]",
+      ...tailArgs(baseVideo, baseAudio, tail, outputPath, targetDurationSec),
+    ];
+  }
+
+  const overlayExtra = overlayExtraInput(audio?.overlayImagePath);
+  const overlayIdx = overlayExtra.length > 0 ? 1 : -1;
+  if (overlayIdx >= 0) {
+    return [
+      "-y",
+      ...vIn,
+      ...overlayExtra,
+      "-filter_complex",
+      videoOverlayGraph(overlayIdx, audio),
+      "-map",
+      videoMapLabel(audio),
+      "-map",
+      "0:a:0?",
       ...tailArgs(baseVideo, baseAudio, tail, outputPath, targetDurationSec),
     ];
   }

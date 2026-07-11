@@ -7,6 +7,11 @@ import {
 import { drawCanvasTextWithEffect, resolveBackgroundFill } from "@/lib/textEffects";
 import { buildCanvasFont, scaleTextSize } from "@/lib/textFonts";
 import {
+  FIXED_QR_MAP_KEY,
+  getFixedQrPixelRect,
+  shouldRenderProjectQr,
+} from "@/lib/qrOverlay";
+import {
   DEFAULT_TEXT_MAX_WIDTH,
   layoutWrappedText,
 } from "@/lib/textWrap";
@@ -52,22 +57,13 @@ function lineXForAlign(
   return blockLeft + (blockWidth - lineWidth) / 2;
 }
 
-function drawQrBadge(
+function drawFixedQrBadge(
   ctx: CanvasRenderingContext2D,
-  layer: TextLayer,
   qrImg: HTMLImageElement,
   canvasW: number,
   canvasH: number
 ) {
-  const size = Math.round(canvasW * 0.12);
-  const anchorX = layer.x * canvasW;
-  const anchorY = layer.y * canvasH;
-  const gap = 8;
-  let x = anchorX + gap;
-  let y = anchorY + gap;
-  if (layer.align === "center") x = anchorX - size / 2;
-  if (layer.align === "right") x = anchorX - size - gap;
-  if (y + size > canvasH - 4) y = canvasH - size - 4;
+  const { x, y, size } = getFixedQrPixelRect(canvasW, canvasH);
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(x - 4, y - 4, size + 8, size + 8);
   ctx.drawImage(qrImg, x, y, size, size);
@@ -165,14 +161,15 @@ export function renderOverlayLayers(
     if (layer.layerType === "image" && layer.imageUrl) {
       const img = overlayImages?.get(layer.id);
       if (img) drawImageLayer(ctx, layer, img, canvasW, canvasH);
-      const qrImg = overlayImages?.get(`${layer.id}:qr`);
-      if (qrImg) drawQrBadge(ctx, layer, qrImg, canvasW, canvasH);
       continue;
     }
     drawTextLayer(ctx, layer, canvasW, canvasH, progress, settings.freezeText);
-    const qrImg = overlayImages?.get(`${layer.id}:qr`);
-    if (qrImg) drawQrBadge(ctx, layer, qrImg, canvasW, canvasH);
   }
+
+  const qrImg =
+    shouldRenderProjectQr(getEffectiveLayers(settings)) &&
+    overlayImages?.get(FIXED_QR_MAP_KEY);
+  if (qrImg) drawFixedQrBadge(ctx, qrImg, canvasW, canvasH);
 }
 
 /** @deprecated Use renderOverlayLayers */

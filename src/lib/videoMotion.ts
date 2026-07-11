@@ -4,17 +4,22 @@ import {
   sceneIncludesPeople,
 } from "@/lib/productShot";
 
+/** Avoid zooming into packs — AI often magnifies incorrect label text. */
+export const NO_PRODUCT_ZOOM_PROMPT =
+  "Never zoom in, push in, or dolly toward the product packaging or label. Camera holds steady or moves slowly outward so pack text is not magnified.";
+
 const CAMERA_BY_INTENSITY: Record<
   NonNullable<ProjectSettings["motionIntensity"]>,
   string
 > = {
-  low: "Slow smooth camera drift with gentle parallax and visible ambient motion.",
+  low: "Locked-off static camera — no zoom, no push-in. Only ambient light, curtains, and natural gestures move.",
   medium:
-    "Cinematic camera push-in with steady parallax — clear continuous movement throughout the clip.",
-  high: "Dynamic slow orbit or arc with strong parallax, fluid camera motion and lively scene energy.",
+    "Very slow pull-back or static wide frame — gentle parallax only, never move closer to the product pack.",
+  high: "Slow pull-back or soft lateral drift — product stays the same size or smaller in frame; never zoom toward packaging.",
 };
 
 export const VIDEO_NEGATIVE_PROMPT =
+  "zoom in, push in, dolly in, close-up on product, macro product shot, camera approaching package, magnifying label text, " +
   "jerky motion, stuttering, jump cuts, head twitch, flickering, warping, morphing, distorted product, blurry label, low quality, worst quality, compression artifacts, shaky camera, sudden snap movement, ghosting, frame drops, frozen static image, " +
   PEOPLE_NEGATIVE_PROMPT;
 
@@ -48,22 +53,23 @@ export function buildVideoMotionPrompt(
 
   const userMotion =
     settings.motionPrompt?.trim() ||
-    "Living scene with continuous natural motion — lighting shifts, gentle background movement, soft human gestures and breathing if people are present.";
+    "Living scene with natural ambient motion — lighting shifts, gentle background movement, soft human gestures and breathing if people are present. No camera zoom.";
 
   const parts = [
     "Smooth fluid cinematic motion, photorealistic high quality, lifelike movement in every frame — not a still image.",
+    NO_PRODUCT_ZOOM_PROMPT,
     camera,
     userMotion,
   ];
 
   if (settings.freezeProduct !== false) {
     parts.push(
-      "Product package stays static and sharp on screen. Animate camera, lighting, environment, and natural human motion around it.",
+      "Product package stays static and sharp on screen. Animate lighting, environment, and natural human motion around it — not the camera toward the pack.",
       "If people are present: natural slow gestures, breathing, and soft expressions — smooth and continuous, not jerky."
     );
   } else {
     parts.push(
-      "Smooth cinematic motion throughout the scene. Keep product label readable."
+      "Smooth cinematic motion throughout the scene. Keep product label readable and avoid moving closer to it."
     );
   }
 

@@ -118,14 +118,14 @@ export const MODELS: ModelCapability[] = [
     kind: "video",
     videoMode: "avatar",
     strengths: "Lip-sync portrait to your narration — Facebook / TikTok presenter style",
-    maxDuration: 30,
+    maxDuration: 60,
     resolutions: ["720p", "1080p"],
     aspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
     creditsPerSecond: 6,
     baseCredits: 12,
-    etaSeconds: 120,
+    etaSeconds: 180,
     costTier: "high",
-    bestUseCase: "VonWillingh talking-head social ads",
+    bestUseCase: "VonWillingh talking-head social ads (up to 60s)",
     falModelId: "fal-ai/kling-video/ai-avatar/v2/standard",
   },
   {
@@ -135,14 +135,14 @@ export const MODELS: ModelCapability[] = [
     kind: "video",
     videoMode: "avatar",
     strengths: "Higher quality lip-sync — 1080p talking head from your image + voice",
-    maxDuration: 30,
+    maxDuration: 60,
     resolutions: ["1080p"],
     aspectRatios: ["16:9", "9:16", "1:1", "4:3", "3:4"],
     creditsPerSecond: 8,
     baseCredits: 16,
-    etaSeconds: 180,
+    etaSeconds: 240,
     costTier: "high",
-    bestUseCase: "Premium VonWillingh presenter videos",
+    bestUseCase: "Premium VonWillingh presenter videos (up to 60s)",
     falModelId: "fal-ai/kling-video/ai-avatar/v2/pro",
   },
   {
@@ -355,4 +355,61 @@ export function routeModel(params: RoutingParams): RoutingResult {
 
 export function getModelById(id: string): ModelCapability | undefined {
   return MODELS.find((m) => m.id === id);
+}
+
+/** Map removed model ids (e.g. legacy Seedance) to a supported replacement. */
+export function resolveVideoModelId(id?: string): string {
+  const fallback = "kling-o3-standard";
+  if (!id) return fallback;
+  if (getModelById(id)) return id;
+  if (id.startsWith("seedance")) return fallback;
+  return fallback;
+}
+
+/** Block incompatible settings before calling fal — returns a user-facing error or null. */
+export function validateVideoModelSettings(
+  model: ModelCapability,
+  opts: { duration: number; aspectRatio: string; resolution: string }
+): string | null {
+  if (opts.duration > model.maxDuration) {
+    return (
+      `${model.name} supports up to ${model.maxDuration}s. ` +
+      `Your clip is ${opts.duration}s — shorten narration or choose a model with a longer max duration.`
+    );
+  }
+
+  if (
+    !model.aspectRatios.includes(opts.aspectRatio as AspectRatio)
+  ) {
+    return (
+      `${model.name} does not support ${opts.aspectRatio} aspect ratio. ` +
+      `Supported: ${model.aspectRatios.join(", ")}.`
+    );
+  }
+
+  if (model.id === "veo-3-1-fast") {
+    if (!["16:9", "9:16"].includes(opts.aspectRatio)) {
+      return (
+        `Veo 3.1 only supports 16:9 or 9:16 aspect ratios (not ${opts.aspectRatio}). ` +
+        "For 1:1 square ads use Kling O3 Standard."
+      );
+    }
+    const veoSeconds = opts.duration;
+    if (veoSeconds > 8) {
+      return (
+        `Veo 3.1 only supports 4s, 6s, or 8s clips (not ${veoSeconds}s). ` +
+        "Use Kling O3 Standard for longer narration."
+      );
+    }
+  }
+
+  const resolution = opts.resolution as Resolution;
+  if (!model.resolutions.includes(resolution)) {
+    return (
+      `${model.name} does not support ${opts.resolution}. ` +
+      `Available: ${model.resolutions.join(", ")}.`
+    );
+  }
+
+  return null;
 }

@@ -20,6 +20,8 @@ interface PromptFieldProps {
   brandName?: string;
   /** When set, replaces static suggestions (e.g. product-aware narration). */
   suggestions?: string[];
+  /** Hide suggestion chips until the user has product context (e.g. product name). */
+  showSuggestions?: boolean;
 }
 
 export function PromptField({
@@ -32,12 +34,14 @@ export function PromptField({
   suggestions: suggestionsOverride,
   label: labelOverride,
   hint: hintOverride,
+  showSuggestions = true,
 }: PromptFieldProps) {
   const meta = getPromptFieldMeta(field, brandName);
   const label = labelOverride ?? meta.label;
   const hint = hintOverride ?? meta.hint;
   const suggestions =
     suggestionsOverride ?? getPromptSuggestions(field, brandName);
+  const visibleSuggestions = showSuggestions ? suggestions : [];
 
   return (
     <div>
@@ -52,20 +56,24 @@ export function PromptField({
         onChange={(e) => onChange(e.target.value)}
       />
       <div className="mt-2">
-        <p className="mb-1.5 text-xs font-medium text-gray-500">Suggestions</p>
-        <div className="flex flex-wrap gap-1.5">
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion.slice(0, 40)}
-              type="button"
-              onClick={() => onChange(suggestion)}
-              className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-left text-xs text-gray-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
-              title={suggestion}
-            >
-              {suggestion.length > 52 ? `${suggestion.slice(0, 52)}…` : suggestion}
-            </button>
-          ))}
-        </div>
+        {visibleSuggestions.length > 0 ? (
+          <>
+            <p className="mb-1.5 text-xs font-medium text-gray-500">Suggestions</p>
+            <div className="flex flex-wrap gap-1.5">
+              {visibleSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.slice(0, 40)}
+                  type="button"
+                  onClick={() => onChange(suggestion)}
+                  className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-left text-xs text-gray-600 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700"
+                  title={suggestion}
+                >
+                  {suggestion.length > 52 ? `${suggestion.slice(0, 52)}…` : suggestion}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

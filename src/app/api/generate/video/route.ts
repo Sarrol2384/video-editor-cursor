@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { withAuth, jsonOk, jsonError } from "@/lib/api-utils";
 import { reserveCredits, refundCredits } from "@/lib/credits";
-import { getModelById, estimateCredits, isAvatarVideoModel } from "@/lib/models";
+import { getModelById, estimateCredits, isAvatarVideoModel, validateVideoModelSettings, resolveVideoModelId } from "@/lib/models";
 import { simulateDelay, buildVideoMetadata, ensureUploadDir } from "@/lib/mockGen";
 import {
   isFalConfigured,
@@ -15,20 +15,9 @@ import {
 } from "@/lib/falClient";
 import { parseSettings } from "@/lib/types";
 import { buildVideoMotionPrompt } from "@/lib/videoMotion";
-import { buildTalkingAvatarPrompt } from "@/lib/avatarVideo";
+import { buildTalkingAvatarPrompt, resolveAvatarDurationSec, AVATAR_MAX_DURATION_SEC } from "@/lib/avatarVideo";
 
 export const maxDuration = 300;
-
-function resolveAvatarDuration(settings: {
-  generatedNarrationDuration?: number;
-  duration: number;
-}): number {
-  const narr = settings.generatedNarrationDuration;
-  if (typeof narr === "number" && narr > 0) {
-    return Math.min(Math.max(Math.ceil(narr), 3), 30);
-  }
-  return Math.min(settings.duration || 8, 30);
-}
 
 export async function POST(req: NextRequest) {
   return withAuth(async (user) => {
@@ -48,13 +37,25 @@ export async function POST(req: NextRequest) {
 
       const settings = { ...parseSettings(project.settings), ...inputSettings };
       const model = getModelById(
-        modelId || settings.selectedModelId || "kling-o3-standard"
+        resolveVideoModelId(modelId || settings.selectedModelId)
       );
       if (!model) return jsonError("Invalid model");
 
       const isAvatar = isAvatarVideoModel(model.id);
+
+      if (
+        isAvatar &&
+        typeof settings.generatedNarrationDuration === "number" &&
+        settings.generatedNarrationDuration > AVATAR_MAX_DURATION_SEC
+      ) {
+        return jsonError(
+          `Narration is ${settings.generatedNarrationDuration.toFixed(1)}s — talking-head supports up to ${AVATAR_MAX_DURATION_SEC}s. Shorten your script or split into multiple clips.`,
+          400
+        );
+      }
+
       const duration = isAvatar
-        ? resolveAvatarDuration(settings)
+        ? resolveAvatarDurationSec(settings)
         : Math.min(settings.duration, model.maxDuration || settings.duration);
 
       const resolution = model.resolutions.includes(
@@ -62,6 +63,16 @@ export async function POST(req: NextRequest) {
       )
         ? settings.resolution
         : model.resolutions[model.resolutions.length - 1];
+
+      const settingsError = validateVideoModelSettings(model, {
+        duration,
+        aspectRatio: settings.aspectRatio,
+        resolution: resolution || settings.resolution,
+      });
+      if (settingsError) {
+        return jsonError(settingsError, 400);
+      }
+
       creditCost = estimateCredits(model, duration);
 
       const imageUrl = settings.selectedImageUrl || settings.sourceImageUrl;
@@ -144,7 +155,12 @@ export async function POST(req: NextRequest) {
           }
           provider = "fal";
         } catch (err) {
-          console.error("fal video generation failed:", err);
+          console.error(
+            "fal video generation failed:",
+            err,
+            "model:",
+            model.falModelId
+          );
           await refundCredits(
             user.id,
             creditCost,
@@ -159,7 +175,7 @@ export async function POST(req: NextRequest) {
             },
           });
           return jsonError(
-            `Video generation failed: ${formatFalVideoError(err)}`,
+            `Video generation failed: ${formatFalVideoError(err, model.name)}`,
             502
           );
         }

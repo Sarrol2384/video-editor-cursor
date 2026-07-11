@@ -52,7 +52,7 @@ async function main() {
         subjectPrompt:
           "Laptop screen sharp in foreground showing clean web UI; professional in focus behind.",
         motionPrompt:
-          "Cinematic push-in on workspace — screen glow pulses gently, natural ambient motion.",
+          "Static wide camera — screen glow pulses gently, natural ambient motion only.",
         narrationScript:
           "Need a custom web app for your business? VonWillingh Online builds tools that fit how you work. Get a free quote today.",
         selectedModelId: "kling-o3-standard",
@@ -115,7 +115,7 @@ async function main() {
         subjectPrompt:
           "Female model waist-up, three-quarter angle, jacket fully visible, face sharp and well lit.",
         motionPrompt:
-          "Slow cinematic push-in on model — fabric catches light, subtle natural movement.",
+          "Wide static shot on model — fabric catches light, subtle hair movement, no zoom.",
         narrationScript:
           "Meet the new pattern bomber from Pomegranate — handmade style you won't find anywhere else. Shop the collection today.",
         selectedModelId: "kling-o3-standard",

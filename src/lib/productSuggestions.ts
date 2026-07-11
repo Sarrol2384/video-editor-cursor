@@ -1,5 +1,9 @@
 import type { ProjectSettings, TextLayer } from "@/lib/types";
 import { inferWorkflowMode } from "@/lib/brands";
+import {
+  getPromptSuggestions,
+  type PromptFieldKey,
+} from "@/lib/promptSuggestions";
 
 export type ProductTheme =
   | "sleep"
@@ -411,6 +415,52 @@ export function productLabel(settings: ProjectSettings): string {
   return "this product";
 }
 
+/** Prompt / narration chips stay hidden until the user names the product. */
+export function shouldShowProductSuggestions(settings: ProjectSettings): boolean {
+  return Boolean(settings.productName?.trim());
+}
+
+/** True when cached AI suggestions match the current product name. */
+export function hasValidAiSuggestions(settings: ProjectSettings): boolean {
+  const ai = settings.aiPromptSuggestions;
+  const name = settings.productName?.trim();
+  if (!ai?.sourceProductName || !name) return false;
+  return ai.sourceProductName.trim().toLowerCase() === name.toLowerCase();
+}
+
+/** AI cache exists but product name no longer matches. */
+export function isAiSuggestionsStale(settings: ProjectSettings): boolean {
+  if (!settings.aiPromptSuggestions?.sourceProductName) return false;
+  return !hasValidAiSuggestions(settings);
+}
+
+export function getPromptSuggestionsForField(
+  settings: ProjectSettings,
+  field: PromptFieldKey,
+  brandName?: string
+): string[] {
+  if (hasValidAiSuggestions(settings) && settings.aiPromptSuggestions) {
+    const ai = settings.aiPromptSuggestions;
+    switch (field) {
+      case "scenePrompt":
+        if (ai.scenePrompt.length > 0) return ai.scenePrompt;
+        break;
+      case "benefitsPrompt":
+        if (ai.benefitsPrompt.length > 0) return ai.benefitsPrompt;
+        break;
+      case "subjectPrompt":
+        if (ai.subjectPrompt.length > 0) return ai.subjectPrompt;
+        break;
+      case "narrationScript":
+        if (ai.narrationScript.length > 0) return ai.narrationScript;
+        break;
+      default:
+        break;
+    }
+  }
+  return getPromptSuggestions(field, brandName);
+}
+
 export function pharmacyLabel(settings: ProjectSettings): string {
   return settings.pharmacyName?.trim() || "your pharmacy";
 }
@@ -427,6 +477,10 @@ function uniqueStrings(items: string[]): string[] {
 }
 
 export function buildNarrationSuggestions(settings: ProjectSettings): string[] {
+  if (!shouldShowProductSuggestions(settings)) return [];
+  if (hasValidAiSuggestions(settings) && settings.aiPromptSuggestions?.narrationScript?.length) {
+    return settings.aiPromptSuggestions.narrationScript;
+  }
   if (isAgencySettings(settings)) {
     const product = productLabel(settings);
     const brand = pharmacyLabel(settings);
@@ -467,12 +521,40 @@ export function buildTextSuggestions(
   settings: ProjectSettings,
   layer: TextLayer
 ): string[] {
+  if (!shouldShowProductSuggestions(settings)) return [];
   if (layer.layerType === "image") return [];
   if (isAgencySettings(settings)) {
     return buildAgencyTextSuggestions(settings, layer);
   }
   if (isFashionSettings(settings)) {
     return buildFashionTextSuggestions(settings, layer);
+  }
+
+  if (hasValidAiSuggestions(settings) && settings.aiPromptSuggestions) {
+    const ai = settings.aiPromptSuggestions;
+    const product = productLabel(settings);
+    const pharmacy = pharmacyLabel(settings);
+    const role = inferTextLayerRole(layer);
+
+    switch (role) {
+      case "headline":
+        return uniqueStrings([
+          pharmacy,
+          product !== "this product" ? product : "",
+          ...ai.textHeadlines,
+        ]);
+      case "subheadline":
+        return ai.textSubheadlines.length > 0 ? ai.textSubheadlines : [];
+      case "price":
+        return [];
+      case "cta":
+        return ai.textCtas.length > 0 ? ai.textCtas : [];
+      default:
+        return uniqueStrings([
+          ...ai.textHeadlines.slice(0, 2),
+          ...ai.textCtas.slice(0, 2),
+        ]);
+    }
   }
 
   const theme = detectProductTheme(settings);

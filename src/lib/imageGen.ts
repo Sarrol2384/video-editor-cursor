@@ -26,6 +26,13 @@ import {
   sceneIncludesPeople,
 } from "@/lib/productShot";
 import {
+  PHARMACY_DEFAULT_SCENE,
+  PHARMACY_NO_ADDED_MARKETING_PROMPT,
+  buildPharmacyImageNegativePrompt,
+  pharmacyPeopleAndBrandingBlock,
+  sanitizePharmacySceneText,
+} from "@/lib/pharmacyImage";
+import {
   generateImageVariants,
   type ImageStyle,
   type ImageVariant,
@@ -70,32 +77,57 @@ const STYLE_PROMPTS: { style: ImageStyle; label: string; suffix: string }[] = [
 export function buildAdImagePrompt(
   settings: Pick<
     ProjectSettings,
-    "scenePrompt" | "benefitsPrompt" | "subjectPrompt" | "backgroundPrompt"
+    "scenePrompt" | "benefitsPrompt" | "subjectPrompt" | "backgroundPrompt" | "pharmacyName"
   >,
-  styleSuffix: string
+  styleSuffix: string,
+  options?: { pharmacy?: boolean }
 ): string {
-  const scene =
+  const rawScene =
     settings.scenePrompt ||
     settings.backgroundPrompt ||
     "Warm wellness lifestyle scene with soft natural lighting";
-  const placement =
+  const rawPlacement =
     settings.subjectPrompt ||
     "Product positioned naturally in the scene, sharp and clearly visible";
 
-  const peopleFocus = sceneIncludesPeople(scene, placement)
-    ? PEOPLE_FOCUS_IMAGE_PROMPT
+  const scene = options?.pharmacy
+    ? sanitizePharmacySceneText(rawScene, settings.pharmacyName) ||
+      PHARMACY_DEFAULT_SCENE
+    : rawScene;
+  const placement = options?.pharmacy
+    ? sanitizePharmacySceneText(rawPlacement, settings.pharmacyName) ||
+      "Product held or on table in frame, sharp and clearly visible, unchanged from upload"
+    : rawPlacement;
+
+  const peopleFocus =
+    options?.pharmacy
+      ? ""
+      : sceneIncludesPeople(scene, placement)
+        ? PEOPLE_FOCUS_IMAGE_PROMPT
+        : "";
+
+  const pharmacyBlock = options?.pharmacy
+    ? pharmacyPeopleAndBrandingBlock(settings.pharmacyName, scene, placement)
     : "";
 
   return [
     "Edit this product photo into a professional advertisement scene.",
     "CRITICAL: Keep the product itself EXACTLY as it is in the original photo — do not change, redraw, or restyle the packaging, label, brand name, logos, colors, or any text printed on the product. The product must remain identical and fully recognizable.",
+    options?.pharmacy
+      ? "Show only this one product pack in the scene. Do not add other products, competitor packs, or duplicate packaging."
+      : "",
     `Replace and extend ONLY the background/environment into: ${scene}.`,
     `Product placement: ${placement}.`,
     peopleFocus,
-    "Do NOT add any text, captions, headlines, prices, logos, badges, stickers, or watermarks anywhere in the image. The scene must contain no added lettering of any kind.",
+    pharmacyBlock,
+    options?.pharmacy
+      ? PHARMACY_NO_ADDED_MARKETING_PROMPT
+      : "Do NOT add any text, captions, headlines, prices, logos, badges, stickers, or watermarks anywhere in the image. The scene must contain no added lettering of any kind.",
     "Photorealistic, broadcast-quality commercial photography, natural lighting and shadows that match the new background.",
     styleSuffix,
-  ].join(" ");
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 async function readImageInput(sourceImageUrl: string): Promise<string> {
@@ -171,6 +203,7 @@ async function generateSingleVariantViaFal(
   const falImageUrl = await uploadImageToFal(sourceImageUrl);
   const agency = isAgencyImageGeneration(settings, sourceImageUrl);
   const fashion = isFashionImageGeneration(settings);
+  const pharmacy = !agency && !fashion;
   const model = getModelById(imageModelId);
   const falModelId = model?.falModelId || "fal-ai/nano-banana/edit";
   const isNb2 = imageModelId === "nano-banana-2";
@@ -181,7 +214,7 @@ async function generateSingleVariantViaFal(
     ? buildFashionSceneDescription(settings, styleSuffix)
     : agency
       ? buildAgencySceneDescription(settings, styleSuffix, promptOptions)
-      : buildSceneDescription(settings, styleSuffix);
+      : buildSceneDescription(settings, styleSuffix, { pharmacy });
   const shotSize = getProductShotSize(settings.aspectRatio);
   const placement = getProductPlacement(settings.subjectPrompt);
 
@@ -191,7 +224,7 @@ async function generateSingleVariantViaFal(
     ? buildFashionImagePrompt(settings, styleSuffix, promptOptions)
     : agency
       ? buildAgencyImagePrompt(settings, styleSuffix, promptOptions)
-      : buildAdImagePrompt(settings, styleSuffix);
+      : buildAdImagePrompt(settings, styleSuffix, { pharmacy });
 
   const referenceImageUrls: string[] = [];
   if (withLogoReference) {
@@ -202,6 +235,9 @@ async function generateSingleVariantViaFal(
   const falAspectRatio = normalizeAspectRatioForFal(settings.aspectRatio || "9:16");
   const aspectHint = getAspectFramingHint(settings.aspectRatio);
   const promptWithAspect = aspectHint ? `${prompt} ${aspectHint}` : prompt;
+  const negativePrompt = pharmacy
+    ? buildPharmacyImageNegativePrompt(settings.pharmacyName)
+    : undefined;
 
   try {
     const results = await editImageWithFal({
@@ -211,6 +247,7 @@ async function generateSingleVariantViaFal(
       falModelId,
       aspectRatio: falAspectRatio,
       resolution: isNb2 ? "1K" : undefined,
+      negativePrompt,
     });
     const result = results[0];
     if (result?.url) {
@@ -254,11 +291,12 @@ async function generateSingleVariantViaAikit(
   const aspectRatio = settings.aspectRatio || "1:1";
   const agency = isAgencyImageGeneration(settings, sourceImageUrl);
   const fashion = isFashionImageGeneration(settings);
+  const pharmacy = !agency && !fashion;
   const prompt = fashion
     ? buildFashionImagePrompt(settings, styleSuffix)
     : agency
       ? buildAgencyImagePrompt(settings, styleSuffix)
-      : buildAdImagePrompt(settings, styleSuffix);
+      : buildAdImagePrompt(settings, styleSuffix, { pharmacy });
   const results = await editImage({
     prompt,
     image: imageInput,

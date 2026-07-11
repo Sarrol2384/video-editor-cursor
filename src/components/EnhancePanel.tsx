@@ -8,7 +8,13 @@ import { resolveAgencyPostFormat } from "@/lib/agencyPostFormat";
 import {
   getAgencyServiceNameSuggestions,
   getFashionProductNameSuggestions,
+  getPromptSuggestionsForField,
+  hasValidAiSuggestions,
+  isAiSuggestionsStale,
+  shouldShowProductSuggestions,
 } from "@/lib/productSuggestions";
+import { PRODUCT_PROMPT_CREDIT_COST } from "@/lib/creditCosts";
+import { FetchTimeoutError, fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { PromptField } from "@/components/PromptField";
 import { ModelPicker } from "@/components/ModelPicker";
 import { VisualStylePicker } from "@/components/VisualStylePicker";
@@ -16,15 +22,96 @@ import { VisualStylePicker } from "@/components/VisualStylePicker";
 interface EnhancePanelProps {
   settings: ProjectSettings;
   onChange: (updates: Partial<ProjectSettings>) => void;
+  projectId?: string;
+  sourceImageUrl?: string;
+  credits?: number;
+  onCreditsChange?: (credits: number) => void;
 }
 
-export function EnhancePanel({ settings, onChange }: EnhancePanelProps) {
+export function EnhancePanel({
+  settings,
+  onChange,
+  projectId,
+  sourceImageUrl,
+  credits = 0,
+  onCreditsChange,
+}: EnhancePanelProps) {
   const workflow = inferWorkflowMode(settings);
   const agency = workflow === "agency" || isAgencyBrand(settings.pharmacyName);
   const fashion = workflow === "fashion" || isFashionBrand(settings.pharmacyName);
+  const pharmacy = !agency && !fashion;
   const brandName = settings.pharmacyName;
   const postFormat = agency ? resolveAgencyPostFormat(settings) : null;
   const [captionOpen, setCaptionOpen] = useState(postFormat !== "talking-head");
+  const [generatingPrompts, setGeneratingPrompts] = useState(false);
+  const [promptError, setPromptError] = useState("");
+
+  const showPromptSuggestions = shouldShowProductSuggestions(settings);
+  const aiReady = hasValidAiSuggestions(settings);
+  const aiStale = isAiSuggestionsStale(settings);
+
+  const canGeneratePrompts =
+    pharmacy &&
+    Boolean(projectId) &&
+    Boolean(sourceImageUrl) &&
+    Boolean(settings.productName?.trim()) &&
+    credits >= PRODUCT_PROMPT_CREDIT_COST;
+
+  function fieldSuggestions(field: Parameters<typeof getPromptSuggestionsForField>[1]) {
+    if (pharmacy) {
+      return getPromptSuggestionsForField(settings, field, brandName);
+    }
+    return undefined;
+  }
+
+  async function handleGenerateProductPrompts() {
+    if (!projectId || !sourceImageUrl || !settings.productName?.trim()) return;
+
+    setGeneratingPrompts(true);
+    setPromptError("");
+    try {
+      const res = await fetchWithTimeout(
+        "/api/generate/product-prompts",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            productName: settings.productName.trim(),
+            sourceImageUrl,
+            pharmacyName: settings.pharmacyName,
+          }),
+        },
+        180_000
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        const msg = data.error || "Failed to generate prompts";
+        setPromptError(
+          /408|timeout/i.test(msg)
+            ? "Analysis timed out — the AI is still slow sometimes. Please try again."
+            : msg
+        );
+        return;
+      }
+
+      onChange({
+        aiPromptSuggestions: data.suggestions,
+        aiProductContext: data.productContext,
+      });
+      if (typeof data.credits === "number") {
+        onCreditsChange?.(data.credits);
+      }
+    } catch (err) {
+      setPromptError(
+        err instanceof FetchTimeoutError
+          ? "Analysis timed out after 3 minutes — please try again."
+          : "Failed to generate prompts"
+      );
+    } finally {
+      setGeneratingPrompts(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -44,17 +131,14 @@ export function EnhancePanel({ settings, onChange }: EnhancePanelProps) {
             Add captions and logo overlays on the Text step.
           </>
         ) : (
-          "Upload your product photo only — we'll generate a full advertisement image with a lifestyle scene around your product using Nano Banana."
+          <>
+            Upload your product photo only — we&apos;ll build a neutral home scene around your
+            pack. No logos, signs, or pharmacy names are drawn into the image (add those as
+            text overlays later). People are mostly Coloured South African, sometimes Black
+            South African.
+          </>
         )}
       </div>
-
-      <PromptField
-        field="scenePrompt"
-        value={settings.scenePrompt || ""}
-        onChange={(scenePrompt) => onChange({ scenePrompt })}
-        brandName={brandName}
-        rows={3}
-      />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
@@ -108,9 +192,65 @@ export function EnhancePanel({ settings, onChange }: EnhancePanelProps) {
               </div>
             </div>
           )}
-          <p className="mt-1 text-xs text-gray-500">
-            Used in narration and text suggestions.
-          </p>
+          {pharmacy && (
+            <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={() => void handleGenerateProductPrompts()}
+                disabled={!canGeneratePrompts || generatingPrompts}
+                className="btn-primary w-full text-sm"
+              >
+                {generatingPrompts
+                  ? "Analyzing product… (can take up to 60s)"
+                  : aiReady
+                    ? `Regenerate prompts (${PRODUCT_PROMPT_CREDIT_COST} credit)`
+                    : `Generate prompts (${PRODUCT_PROMPT_CREDIT_COST} credit)`}
+              </button>
+              {!settings.productName?.trim() && (
+                <p className="text-xs text-gray-500">
+                  Enter the product name from your packaging first.
+                </p>
+              )}
+              {settings.productName?.trim() && credits < PRODUCT_PROMPT_CREDIT_COST && (
+                <p className="text-xs text-red-600">
+                  You need {PRODUCT_PROMPT_CREDIT_COST} credit but only have {credits}.
+                </p>
+              )}
+              {promptError && (
+                <p className="text-xs text-red-600">{promptError}</p>
+              )}
+              {aiStale && (
+                <p className="text-xs text-amber-700">
+                  Product name changed — regenerate prompts for updated suggestions.
+                </p>
+              )}
+              {aiReady && settings.aiProductContext && (
+                <p className="text-xs text-brand-800">
+                  Detected:{" "}
+                  <strong>
+                    {settings.aiProductContext.category ||
+                      settings.aiProductContext.identifiedName}
+                  </strong>
+                  {settings.aiProductContext.targetAudience
+                    ? ` — ${settings.aiProductContext.targetAudience}`
+                    : ""}
+                </p>
+              )}
+              {showPromptSuggestions && !aiReady && !aiStale && !generatingPrompts && (
+                <p className="text-xs text-gray-500">
+                  Click Generate prompts to read your pack photo and get tailored
+                  suggestions. Static chips appear as fallback until then.
+                </p>
+              )}
+            </div>
+          )}
+          {!pharmacy && (
+            <p className="mt-1 text-xs text-gray-500">
+              {showPromptSuggestions
+                ? "Used in narration and text suggestions."
+                : "Enter the name from your packaging first — then tailored suggestions appear below."}
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium">Business / brand name</label>
@@ -131,6 +271,16 @@ export function EnhancePanel({ settings, onChange }: EnhancePanelProps) {
         </div>
       </div>
 
+      <PromptField
+        field="scenePrompt"
+        value={settings.scenePrompt || ""}
+        onChange={(scenePrompt) => onChange({ scenePrompt })}
+        brandName={brandName}
+        rows={3}
+        showSuggestions={showPromptSuggestions}
+        suggestions={fieldSuggestions("scenePrompt")}
+      />
+
       {agency && postFormat === "talking-head" && !captionOpen ? (
         <button
           type="button"
@@ -147,6 +297,8 @@ export function EnhancePanel({ settings, onChange }: EnhancePanelProps) {
             onChange={(benefitsPrompt) => onChange({ benefitsPrompt })}
             brandName={brandName}
             rows={3}
+            showSuggestions={showPromptSuggestions}
+            suggestions={fieldSuggestions("benefitsPrompt")}
           />
           {agency && (
             <p className="-mt-2 text-xs text-amber-800">
@@ -179,6 +331,8 @@ export function EnhancePanel({ settings, onChange }: EnhancePanelProps) {
         onChange={(subjectPrompt) => onChange({ subjectPrompt })}
         brandName={brandName}
         rows={2}
+        showSuggestions={showPromptSuggestions}
+        suggestions={fieldSuggestions("subjectPrompt")}
       />
 
       <div>

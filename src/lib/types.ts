@@ -92,6 +92,30 @@ export interface ProjectSettings {
   shareToken?: string;
   /** Last exported MP4 URL shown on the share page. */
   shareExportUrl?: string;
+  /** AI-generated prompt chips from pack photo analysis. */
+  aiPromptSuggestions?: AiPromptSuggestions;
+  /** Summary of what the vision model read from the pack. */
+  aiProductContext?: AiProductContext;
+}
+
+export interface AiPromptSuggestions {
+  scenePrompt: string[];
+  benefitsPrompt: string[];
+  subjectPrompt: string[];
+  narrationScript: string[];
+  textHeadlines: string[];
+  textSubheadlines: string[];
+  textCtas: string[];
+  generatedAt?: string;
+  sourceProductName?: string;
+}
+
+export interface AiProductContext {
+  identifiedName?: string;
+  category?: string;
+  keyBenefits?: string[];
+  targetAudience?: string;
+  regulatoryNote?: string;
 }
 
 export const DEFAULT_TEXT_LAYERS: TextLayer[] = [
@@ -166,7 +190,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   subjectPrompt:
     "Product sharp and readable on side table, foreground right. Parent and child in focus mid-left, faces and expressions clearly visible.",
   motionPrompt:
-    "Cinematic camera push-in with gentle parallax. Living scene — soft lighting shifts, natural breathing and gestures, curtains and background in gentle motion.",
+    "Static wide camera — ambient light shifts, curtains sway, natural breathing and gestures. No zoom toward the product pack.",
   narrationScript: "",
   voiceId: "professional-f",
   musicMood: "professional",
@@ -200,6 +224,7 @@ export function createTextLayer(overrides?: Partial<TextLayer>): TextLayer {
 }
 
 function normalizeTextLayer(layer: TextLayer): TextLayer {
+  const linkUrl = layer.linkUrl?.trim();
   return {
     ...layer,
     layerType: layer.layerType || "text",
@@ -209,6 +234,8 @@ function normalizeTextLayer(layer: TextLayer): TextLayer {
     backgroundColor: layer.backgroundColor || "#000000",
     backgroundOpacity:
       layer.backgroundOpacity !== undefined ? layer.backgroundOpacity : 0.65,
+    showQr: linkUrl && layer.showQr === true ? true : undefined,
+    linkUrl: linkUrl || undefined,
   };
 }
 
@@ -240,8 +267,13 @@ export function parseSettings(json: string, projectName?: string): ProjectSettin
     const merged = { ...DEFAULT_SETTINGS, ...parsed };
     if (merged.generatedVideoUrl === null) delete merged.generatedVideoUrl;
     if (merged.videoHasEmbeddedAudio === null) delete merged.videoHasEmbeddedAudio;
+    if (merged.aiPromptSuggestions === null) delete merged.aiPromptSuggestions;
+    if (merged.aiProductContext === null) delete merged.aiProductContext;
     merged.textLayers = migrateOverlayText(merged).map(normalizeTextLayer);
     if (!merged.imageFit) merged.imageFit = "contain";
+    if (merged.selectedModelId?.startsWith("seedance")) {
+      merged.selectedModelId = "kling-o3-standard";
+    }
     return applyBrandDefaults(merged, projectName);
   } catch {
     return { ...DEFAULT_SETTINGS };

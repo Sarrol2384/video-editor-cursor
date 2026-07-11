@@ -1,4 +1,11 @@
 import type { ProjectSettings } from "@/lib/types";
+import {
+  PHARMACY_DEFAULT_SCENE,
+  PHARMACY_NO_ADDED_MARKETING_PROMPT,
+  buildPharmacyBrandingExclusionPrompt,
+  pharmacyPeopleAndBrandingBlock,
+  sanitizePharmacySceneText,
+} from "@/lib/pharmacyImage";
 
 const PEOPLE_KEYWORDS =
   /\b(person|people|woman|man|mother|father|parent|child|family|caregiver|pharmacist|customer|couple|lady|gentleman|adult|patient|hands)\b/i;
@@ -15,7 +22,7 @@ export const PEOPLE_FOCUS_VIDEO_PROMPT =
   "People in the scene remain in sharp focus with clear faces and natural expressions in the mid-ground or foreground. Do not blur people or hide them as tiny distant figures.";
 
 export const PEOPLE_NEGATIVE_PROMPT =
-  "blurry faces, out of focus people, distant tiny figures, heavy background bokeh on faces, people far in background, unrecognizable faces";
+  "blurry faces, out of focus people, distant tiny figures, heavy background bokeh on faces, people far in background, unrecognizable faces, pharmacy sign, store logo, shop signage, wall text, readable letters, E-KEM, poster, shelf talker, branded uniform, shopping bag with logo, watermark, headline text, wrong packaging colors, altered product label";
 
 /** ~1MP output sizes per aspect ratio (Bria recommendation). */
 export function getProductShotSize(aspectRatio?: string): [number, number] {
@@ -58,27 +65,46 @@ export function getProductPlacement(
 export function buildSceneDescription(
   settings: Pick<
     ProjectSettings,
-    "scenePrompt" | "benefitsPrompt" | "backgroundPrompt" | "subjectPrompt"
+    "scenePrompt" | "benefitsPrompt" | "backgroundPrompt" | "subjectPrompt" | "pharmacyName"
   >,
-  styleSuffix: string
+  styleSuffix: string,
+  options?: { pharmacy?: boolean }
 ): string {
-  const scene =
+  const rawScene =
     settings.scenePrompt ||
     settings.backgroundPrompt ||
     "Warm wellness lifestyle scene with soft natural lighting";
+  const scene = options?.pharmacy
+    ? sanitizePharmacySceneText(rawScene, settings.pharmacyName) ||
+      PHARMACY_DEFAULT_SCENE
+    : rawScene;
   const mood = settings.benefitsPrompt
     ? `Mood and benefits to convey: ${settings.benefitsPrompt}.`
     : "";
-  const placement = settings.subjectPrompt
-    ? `Product placement in scene: ${settings.subjectPrompt}.`
+  const rawPlacement = settings.subjectPrompt;
+  const placement = rawPlacement
+    ? options?.pharmacy
+      ? `Product placement in scene: ${sanitizePharmacySceneText(rawPlacement, settings.pharmacyName) || "product on table, unchanged from upload"}.`
+      : `Product placement in scene: ${rawPlacement}.`
     : "Product placed naturally on a surface in the scene.";
+
+  const peopleBlock = options?.pharmacy
+    ? pharmacyPeopleAndBrandingBlock(
+        settings.pharmacyName,
+        scene,
+        settings.subjectPrompt
+      )
+    : sceneIncludesPeople(scene, settings.subjectPrompt)
+      ? PEOPLE_FOCUS_IMAGE_PROMPT
+      : "";
 
   return [
     scene,
     mood,
     placement,
-    sceneIncludesPeople(scene, settings.subjectPrompt)
-      ? PEOPLE_FOCUS_IMAGE_PROMPT
+    peopleBlock,
+    options?.pharmacy
+      ? `${buildPharmacyBrandingExclusionPrompt(settings.pharmacyName)} ${PHARMACY_NO_ADDED_MARKETING_PROMPT}`
       : "",
     styleSuffix,
     "Photorealistic commercial photography. No text overlays or watermarks.",

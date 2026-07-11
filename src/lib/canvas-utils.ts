@@ -155,12 +155,14 @@ export function getMotionScale(
   progress: number
 ): { scale: number; offsetX: number; offsetY: number } {
   const ranges = {
-    low: { scaleRange: 0.06, offsetRange: 20 },
-    medium: { scaleRange: 0.16, offsetRange: 50 },
-    high: { scaleRange: 0.3, offsetRange: 100 },
+    low: { scaleRange: 0.03, offsetRange: 12 },
+    medium: { scaleRange: 0.06, offsetRange: 28 },
+    high: { scaleRange: 0.1, offsetRange: 45 },
   };
   const { scaleRange, offsetRange } = ranges[intensity];
-  const scale = 1 + scaleRange * Math.sin(progress * Math.PI * 2);
+  // Pull back over the clip — never zoom in on product packaging labels
+  const t = 0.5 + 0.5 * Math.sin(progress * Math.PI);
+  const scale = 1 - scaleRange * t;
   const offsetX = offsetRange * Math.sin(progress * Math.PI);
   const offsetY = offsetRange * Math.cos(progress * Math.PI * 0.5);
   return { scale, offsetX, offsetY };

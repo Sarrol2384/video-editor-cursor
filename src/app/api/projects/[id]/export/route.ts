@@ -36,7 +36,9 @@ export async function POST(
 
     let inputPath: string | null = null;
     let outputPath: string | null = null;
+    let overlayPath: string | null = null;
     let deleteInputAfter = false;
+    let deleteOverlayAfter = false;
 
     try {
       const formData = await req.formData();
@@ -44,6 +46,7 @@ export async function POST(
       const lipSyncExport = formData.get("lipSyncExport") === "1";
       const rawOnly = formData.get("rawOnly") === "1";
       const canvasExport = formData.get("canvasExport") === "1";
+      const overlayExport = formData.get("overlayExport") === "1";
       const exportDurationRaw = formData.get("exportDurationSec");
       const clientExportDuration =
         typeof exportDurationRaw === "string"
@@ -53,7 +56,7 @@ export async function POST(
       const generatedVideoUrl = settings.generatedVideoUrl?.trim() ?? "";
       const narrationUrl = settings.generatedNarrationUrl?.trim() ?? "";
 
-      if ((lipSyncExport || rawOnly) && generatedVideoUrl) {
+      if ((lipSyncExport || rawOnly || overlayExport) && generatedVideoUrl) {
         const rawPath = resolveUploadPath(generatedVideoUrl);
         if (!rawPath) {
           return jsonError("Generated video file path is invalid", 400);
@@ -65,6 +68,23 @@ export async function POST(
         }
         inputPath = rawPath;
         deleteInputAfter = false;
+
+        if (overlayExport) {
+          const overlayFile = formData.get("overlay") as File | null;
+          if (!overlayFile || overlayFile.size === 0) {
+            return jsonError("No overlay image provided", 400);
+          }
+          if (overlayFile.size > 20 * 1024 * 1024) {
+            return jsonError("Overlay image is too large", 413);
+          }
+          const uploadDir = await ensureUploadDir();
+          overlayPath = path.join(uploadDir, `${uuidv4()}-overlay.png`);
+          deleteOverlayAfter = true;
+          await fs.writeFile(
+            overlayPath,
+            Buffer.from(await overlayFile.arrayBuffer())
+          );
+        }
       } else {
         const video = formData.get("video") as File | null;
         if (!video) return jsonError("No video file provided");
@@ -102,6 +122,7 @@ export async function POST(
         rawOnly ||
         (Boolean(settings.videoHasEmbeddedAudio) &&
           !canvasExport &&
+          !overlayExport &&
           !narrationExists);
 
       const inputVideoDurationSec = await probeMediaDurationSec(inputPath!);
@@ -148,6 +169,8 @@ export async function POST(
         cropAvatarSubtitles,
         outputWidth: width,
         outputHeight: height,
+        imageFit: settings.imageFit || "contain",
+        overlayImagePath: overlayPath ?? undefined,
       };
 
       try {
@@ -163,6 +186,8 @@ export async function POST(
             cropAvatarSubtitles,
             outputWidth: width,
             outputHeight: height,
+            imageFit: settings.imageFit || "contain",
+            overlayImagePath: overlayPath ?? undefined,
           });
         } else if (useEmbeddedAudio) {
           await convertWebmToMp4(inputPath!, outputPath, {
@@ -171,11 +196,17 @@ export async function POST(
             cropAvatarSubtitles,
             outputWidth: width,
             outputHeight: height,
+            imageFit: settings.imageFit || "contain",
+            overlayImagePath: overlayPath ?? undefined,
           });
         } else {
           await convertWebmToMp4(inputPath!, outputPath, {
             targetDurationSec,
             inputVideoDurationSec: inputVideoDurationSec ?? undefined,
+            outputWidth: width,
+            outputHeight: height,
+            imageFit: settings.imageFit || "contain",
+            overlayImagePath: overlayPath ?? undefined,
           });
         }
       }
@@ -228,6 +259,9 @@ export async function POST(
     } finally {
       if (inputPath && deleteInputAfter) {
         await fs.unlink(inputPath).catch(() => {});
+      }
+      if (overlayPath && deleteOverlayAfter) {
+        await fs.unlink(overlayPath).catch(() => {});
       }
     }
   });

@@ -4,12 +4,14 @@ import { useCallback, useState } from "react";
 
 interface UploadDropzoneProps {
   onUpload: (file: File) => Promise<void>;
+  onRemove?: () => void;
   currentImage?: string;
   loading?: boolean;
 }
 
 export function UploadDropzone({
   onUpload,
+  onRemove,
   currentImage,
   loading,
 }: UploadDropzoneProps) {
@@ -45,14 +47,38 @@ export function UploadDropzone({
       }`}
     >
       {currentImage ? (
-        <div className="text-center">
+        <div className="pointer-events-none relative text-center">
           <img
             src={currentImage}
             alt="Uploaded product"
             className="mx-auto max-h-48 rounded-lg object-contain shadow-md"
           />
+          {onRemove && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove();
+              }}
+              disabled={loading}
+              className="pointer-events-auto absolute right-0 top-0 z-10 rounded-full bg-white p-1.5 text-gray-500 shadow-md ring-1 ring-gray-200 transition-colors hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+              title="Remove photo"
+              aria-label="Remove photo"
+            >
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </button>
+          )}
           <p className="mt-4 text-sm text-gray-600">
-            Image uploaded. Drop another to replace.
+            {onRemove
+              ? "Drop another to replace, or remove to start over."
+              : "Image uploaded. Drop another to replace."}
           </p>
         </div>
       ) : (
@@ -78,7 +104,7 @@ export function UploadDropzone({
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
         onChange={handleChange}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="absolute inset-0 z-0 cursor-pointer opacity-0"
         disabled={loading}
       />
 

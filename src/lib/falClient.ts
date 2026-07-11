@@ -200,6 +200,7 @@ export async function editImageWithFal(options: {
   falModelId?: string;
   aspectRatio?: string;
   resolution?: "1K" | "2K" | "4K";
+  negativePrompt?: string;
 }): Promise<ImageEditResult[]> {
   ensureConfigured();
 
@@ -220,6 +221,10 @@ export async function editImageWithFal(options: {
   const aspectRatio = normalizeAspectRatioForFal(options.aspectRatio);
   if (aspectRatio !== "auto") {
     input.aspect_ratio = aspectRatio;
+  }
+
+  if (options.negativePrompt) {
+    input.negative_prompt = options.negativePrompt.slice(0, 500);
   }
 
   const result = await fal.subscribe(falModelId, {
@@ -278,18 +283,118 @@ function mapVeoResolution(resolution?: string): "720p" | "1080p" | "4k" {
   return "1080p";
 }
 
-export function formatFalVideoError(err: unknown): string {
+export function formatFalVideoError(err: unknown, modelName?: string): string {
+  return formatFalError(err, { modelName });
+}
+
+type FalFieldError = {
+  loc?: (string | number)[];
+  msg?: string;
+};
+
+function extractFalDetail(err: unknown): string | null {
+  if (!err || typeof err !== "object") return null;
+  const record = err as Record<string, unknown>;
+
+  if ("fieldErrors" in record && Array.isArray(record.fieldErrors)) {
+    const parts = (record.fieldErrors as FalFieldError[])
+      .map((e) => {
+        const field = e.loc?.length ? String(e.loc[e.loc.length - 1]) : "input";
+        return e.msg ? `${field}: ${e.msg}` : "";
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ");
+  }
+
+  const body = record.body;
+  if (body && typeof body === "object") {
+    const bodyRecord = body as Record<string, unknown>;
+    const detail = bodyRecord.detail;
+    if (typeof detail === "string" && detail.trim()) return detail.trim();
+    if (Array.isArray(detail)) {
+      const parts = detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object" && "msg" in item) {
+            const fieldError = item as FalFieldError;
+            const field = fieldError.loc?.length
+              ? String(fieldError.loc[fieldError.loc.length - 1])
+              : "input";
+            return fieldError.msg ? `${field}: ${fieldError.msg}` : "";
+          }
+          return "";
+        })
+        .filter(Boolean);
+      if (parts.length) return parts.join("; ");
+    }
+    if (typeof bodyRecord.message === "string" && bodyRecord.message.trim()) {
+      return bodyRecord.message.trim();
+    }
+  }
+
+  if (typeof record.detail === "string" && record.detail.trim()) {
+    return record.detail.trim();
+  }
+
+  return null;
+}
+
+/** Turn fal ApiError / balance errors into actionable messages for the UI. */
+export function formatFalError(
+  err: unknown,
+  context?: { modelName?: string }
+): string {
+  const detail = extractFalDetail(err);
+  if (detail) {
+    if (/balance|locked|exhausted|forbidden|invalid key/i.test(detail)) {
+      if (/invalid key/i.test(detail)) {
+        return (
+          "Your fal.ai API key is invalid. Check FAL_KEY in .env and restart the dev server."
+        );
+      }
+      return `${detail} Visit https://fal.ai/dashboard/billing to top up.`;
+    }
+    const prefix = context?.modelName ? `${context.modelName}: ` : "";
+    if (/likenesses of real people|private information that cannot be processed/i.test(detail)) {
+      return (
+        `${prefix}${detail} ` +
+        "Try Kling O3 Standard, or regenerate your ad image without identifiable faces."
+      );
+    }
+    return `${prefix}${detail}`;
+  }
+
   const raw =
     err instanceof Error
       ? err.message
       : typeof err === "string"
         ? err
-        : "Video generation failed";
+        : "Request failed";
 
-  if (/unprocessable/i.test(raw)) {
+  if (/gateway timeout|504/i.test(raw)) {
     return (
-      "Invalid settings for this video model. Veo 3 only supports 4s, 6s, or 8s " +
-      "duration and 16:9 or 9:16 aspect ratios. For 1:1 square ads, use Kling O3 Standard."
+      `${context?.modelName ? `${context.modelName}: ` : ""}` +
+      "Generation timed out on fal.ai. Try Wan 2.7 or a shorter duration and retry in a moment."
+    );
+  }
+
+  if (/unprocessable|422|validation/i.test(raw)) {
+    if (context?.modelName?.toLowerCase().includes("veo")) {
+      return (
+        "Veo 3.1 only supports 4s, 6s, or 8s duration and 16:9 or 9:16 aspect ratios. " +
+        "For 1:1 square ads, use Kling O3 Standard."
+      );
+    }
+    const modelHint = context?.modelName
+      ? `Invalid settings for ${context.modelName}.`
+      : "Invalid settings for this video model.";
+    return `${modelHint} Check duration, aspect ratio, and resolution, then retry.`;
+  }
+
+  if (/forbidden|403|balance|locked|exhausted/i.test(raw)) {
+    return (
+      "Your fal.ai balance is exhausted or the API key is invalid. " +
+      "Top up at https://fal.ai/dashboard/billing and restart the dev server after updating FAL_KEY."
     );
   }
 
@@ -396,6 +501,48 @@ export async function runXaiTts(options: {
     throw new Error("xAI TTS returned no audio URL");
   }
   return url;
+}
+
+interface FalVisionOutput {
+  output?: string;
+  error?: string;
+}
+
+/**
+ * Run a vision-language model on one or more images.
+ */
+export async function runVisionLlm(options: {
+  prompt: string;
+  systemPrompt?: string;
+  imageUrls: string[];
+  model?: string;
+  maxTokens?: number;
+}): Promise<string> {
+  ensureConfigured();
+
+  const result = await fal.subscribe("fal-ai/any-llm/vision", {
+    input: {
+      prompt: options.prompt,
+      system_prompt: options.systemPrompt,
+      image_urls: options.imageUrls,
+      model: options.model || "google/gemini-2.5-flash-lite",
+      priority: "latency",
+      temperature: 0.4,
+      max_tokens: options.maxTokens ?? 2048,
+      reasoning: false,
+    },
+    logs: true,
+  });
+
+  const data = result.data as FalVisionOutput;
+  if (data.error) {
+    throw new Error(data.error);
+  }
+  const text = data.output?.trim();
+  if (!text) {
+    throw new Error("Vision model returned no output");
+  }
+  return text;
 }
 
 /**
