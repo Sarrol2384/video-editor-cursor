@@ -5,8 +5,8 @@ const nextConfig = {
     serverActions: {
       bodySizeLimit: "10mb",
     },
-    // Vision LLM + fal queue can exceed the default 30s dev proxy limit.
-    proxyTimeout: 300_000,
+    // Kling / avatar video jobs regularly exceed 5 minutes under queue load.
+    proxyTimeout: 600_000,
   },
 };
 

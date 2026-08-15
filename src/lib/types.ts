@@ -188,7 +188,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   backgroundPrompt:
     "Warm interior; people sharp in mid-ground, only distant background softly blurred.",
   subjectPrompt:
-    "Product sharp and readable on side table, foreground right. Parent and child in focus mid-left, faces and expressions clearly visible.",
+    "Family faces sharp in mid-shot. Product pack resting on the dining table to the side at natural scale with a soft contact shadow — not a giant centered hero, not floating.",
   motionPrompt:
     "Static wide camera — ambient light shifts, curtains sway, natural breathing and gestures. No zoom toward the product pack.",
   narrationScript: "",
@@ -198,7 +198,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
   musicVolume: 40,
   priority: "balanced",
   selectedModelId: "kling-o3-standard",
-  selectedImageModelId: "nano-banana",
+  selectedImageModelId: "nano-banana-2",
   brandId: "ekem",
   workflowMode: "pharmacy",
 };

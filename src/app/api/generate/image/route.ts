@@ -6,6 +6,7 @@ import { getModelById, estimateCredits } from "@/lib/models";
 import { ensureUploadDir, type ImageStyle } from "@/lib/mockGen";
 import { generateMockOrRealVariants } from "@/lib/imageGen";
 import { parseSettings } from "@/lib/types";
+import { formatFalError } from "@/lib/falClient";
 
 export async function POST(req: NextRequest) {
   return withAuth(async (user) => {
@@ -151,7 +152,8 @@ export async function POST(req: NextRequest) {
         });
       }
       return jsonError(
-        err instanceof Error ? err.message : "Image generation failed",
+        formatFalError(err) ||
+          (err instanceof Error ? err.message : "Image generation failed"),
         500
       );
     }

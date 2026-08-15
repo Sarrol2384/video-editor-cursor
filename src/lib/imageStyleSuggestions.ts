@@ -163,13 +163,25 @@ const PHARMACY_VISUAL_STYLES: VisualStyleSuggestion[] = [
     id: "pharm-life-family",
     label: "Family lifestyle",
     imageStyle: "lifestyle",
-    hint: "Bright kitchen or lounge, parents and children in focus, healthy everyday life.",
+    hint: "Bright kitchen, lounge, or garden patio — parents and children in focus, healthy everyday life.",
+  },
+  {
+    id: "pharm-life-outdoor",
+    label: "Outdoor lifestyle",
+    imageStyle: "lifestyle",
+    hint: "Sunny park picnic, garden patio, or coastal promenade — faces sharp, product on a table or picnic surface, no store signage.",
+  },
+  {
+    id: "pharm-life-active",
+    label: "Active wellness",
+    imageStyle: "vibrant",
+    hint: "After exercise in a green park or balcony break — energetic but natural, product on bench or outdoor table.",
   },
   {
     id: "pharm-life-pharmacy",
-    label: "Home consultation",
+    label: "Trusted caregiver",
     imageStyle: "lifestyle",
-    hint: "Coloured South African caregiver at home with product on table — trusted care mood, no store logos or pharmacy signage.",
+    hint: "Coloured South African caregiver with product on table — trusted care mood, home or patio, no store logos or pharmacy signage.",
   },
   {
     id: "pharm-min-catalog",

@@ -23,6 +23,7 @@ import {
   getProductPlacement,
   getProductShotSize,
   PEOPLE_FOCUS_IMAGE_PROMPT,
+  PRODUCT_REALISM_PROMPT,
   sceneIncludesPeople,
 } from "@/lib/productShot";
 import {
@@ -57,7 +58,7 @@ const STYLE_PROMPTS: { style: ImageStyle; label: string; suffix: string }[] = [
     style: "lifestyle",
     label: "Lifestyle",
     suffix:
-      "Warm authentic lifestyle setting, natural candid atmosphere, soft natural light, real-world context.",
+      "Warm authentic lifestyle photograph, natural candid family atmosphere, soft window light. Faces sharp. Product is a small prop on the table — not a giant catalog cutout.",
   },
   {
     style: "minimalist",
@@ -88,7 +89,7 @@ export function buildAdImagePrompt(
     "Warm wellness lifestyle scene with soft natural lighting";
   const rawPlacement =
     settings.subjectPrompt ||
-    "Product positioned naturally in the scene, sharp and clearly visible";
+    "Product resting on the dining table in the foreground, sharp and clearly visible, with a soft contact shadow";
 
   const scene = options?.pharmacy
     ? sanitizePharmacySceneText(rawScene, settings.pharmacyName) ||
@@ -96,7 +97,7 @@ export function buildAdImagePrompt(
     : rawScene;
   const placement = options?.pharmacy
     ? sanitizePharmacySceneText(rawPlacement, settings.pharmacyName) ||
-      "Product held or on table in frame, sharp and clearly visible, unchanged from upload"
+      "Product resting on the dining table in the foreground next to the people, sharp and clearly visible, unchanged from upload, soft contact shadow on the table"
     : rawPlacement;
 
   const peopleFocus =
@@ -112,12 +113,13 @@ export function buildAdImagePrompt(
 
   return [
     "Edit this product photo into a professional advertisement scene.",
-    "CRITICAL: Keep the product itself EXACTLY as it is in the original photo — do not change, redraw, or restyle the packaging, label, brand name, logos, colors, or any text printed on the product. The product must remain identical and fully recognizable.",
+    "CRITICAL: Keep the product packaging identity EXACTLY as in the original photo — same label, brand name, logos, colors, and printed text. Do not redraw or invent packaging. You MAY gently relight the pack and add a soft contact shadow so it matches the new scene.",
     options?.pharmacy
       ? "Show only this one product pack in the scene. Do not add other products, competitor packs, or duplicate packaging."
       : "",
     `Replace and extend ONLY the background/environment into: ${scene}.`,
     `Product placement: ${placement}.`,
+    options?.pharmacy ? PRODUCT_REALISM_PROMPT : "",
     peopleFocus,
     pharmacyBlock,
     options?.pharmacy
@@ -128,6 +130,52 @@ export function buildAdImagePrompt(
   ]
     .filter(Boolean)
     .join(" ");
+}
+
+/** Shorter pharmacy prompt — used as a retry when Nano Banana refuses complex/family scenes. */
+export function buildSimplifiedPharmacyAdPrompt(
+  settings: Pick<
+    ProjectSettings,
+    "scenePrompt" | "subjectPrompt" | "backgroundPrompt" | "pharmacyName"
+  >,
+  styleSuffix: string
+): string {
+  const scene =
+    sanitizePharmacySceneText(settings.scenePrompt, settings.pharmacyName) ||
+    PHARMACY_DEFAULT_SCENE;
+  // Avoid child/medicine safety refusals on retry — adult caregiver framing.
+  const safeScene = scene
+    .replace(/\b(child|children|kids?|toddler|baby|babies|son|daughter)\b/gi, "adult")
+    .replace(/\b(mother|father|parent)\b/gi, "caregiver");
+
+  return [
+    "Edit this product photo into a realistic lifestyle advertisement.",
+    "Keep the product packaging identical to the upload — same label, logos, and colors. Gently match lighting and add a soft contact shadow.",
+    "Show only this one product pack.",
+    `Scene: ${safeScene}. Prefer an adult caregiver in a home kitchen, garden patio, or park — no children in frame.`,
+    "Product resting on a table at natural scale, not floating, not a giant centered hero.",
+    "People faces sharp if present. No signs, logos, prices, watermarks, or AI badges.",
+    PHARMACY_NO_ADDED_MARKETING_PROMPT,
+    styleSuffix,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isModelRefusalError(err: unknown): boolean {
+  const text =
+    err instanceof Error
+      ? err.message
+      : typeof err === "string"
+        ? err
+        : JSON.stringify(err);
+  const detail =
+    err && typeof err === "object" && "body" in err
+      ? JSON.stringify((err as { body?: unknown }).body)
+      : "";
+  return /expected output|unsafe content|unprocessable|422/i.test(
+    `${text} ${detail}`
+  );
 }
 
 async function readImageInput(sourceImageUrl: string): Promise<string> {
@@ -217,6 +265,13 @@ async function generateSingleVariantViaFal(
       : buildSceneDescription(settings, styleSuffix, { pharmacy });
   const shotSize = getProductShotSize(settings.aspectRatio);
   const placement = getProductPlacement(settings.subjectPrompt);
+  const lifestyleWithPeople =
+    pharmacy &&
+    sceneIncludesPeople(
+      settings.scenePrompt,
+      settings.subjectPrompt,
+      settings.backgroundPrompt
+    );
 
   let storageUrl = sourceImageUrl;
   let provider: ImageProvider = isNb2 ? "nano-banana-2" : "nano-banana";
@@ -253,7 +308,54 @@ async function generateSingleVariantViaFal(
     if (result?.url) {
       storageUrl = await downloadAndSave(result.url, uploadDir);
     }
-  } catch (nanoErr) {
+  } catch (firstErr) {
+    let nanoErr: unknown = firstErr;
+    // Kids + medicine scenes often get refused — retry once with a simpler adult-only prompt.
+    if (pharmacy && isModelRefusalError(nanoErr)) {
+      console.warn("Nano Banana refused scene; retrying with simplified adult prompt");
+      const retryPrompt = buildSimplifiedPharmacyAdPrompt(settings, styleSuffix);
+      const retryWithAspect = aspectHint
+        ? `${retryPrompt} ${aspectHint}`
+        : retryPrompt;
+      try {
+        const retryModelId = isNb2
+          ? "fal-ai/nano-banana/edit"
+          : falModelId;
+        const results = await editImageWithFal({
+          prompt: retryWithAspect,
+          imageUrl: falImageUrl,
+          falModelId: retryModelId,
+          aspectRatio: falAspectRatio,
+          resolution: undefined,
+          negativePrompt,
+        });
+        const result = results[0];
+        if (result?.url) {
+          storageUrl = await downloadAndSave(result.url, uploadDir);
+          provider = "nano-banana";
+          return {
+            provider,
+            variant: {
+              id: uuidv4(),
+              style: presetStyle,
+              label: "",
+              filter: "",
+              background: "",
+              storageUrl,
+              prompt: retryWithAspect,
+            },
+          };
+        }
+      } catch (retryErr) {
+        console.error("Simplified Nano Banana retry failed:", retryErr);
+        nanoErr = retryErr;
+      }
+    }
+
+    if (lifestyleWithPeople) {
+      console.error("Nano Banana failed (no Bria fallback for people lifestyle):", nanoErr);
+      throw nanoErr;
+    }
     console.error("Nano Banana failed, falling back to Bria product shot:", nanoErr);
     provider = "bria";
     const resultUrl = await runBriaProductShot({
@@ -368,26 +470,32 @@ export async function generateMockOrRealVariants(
         return { variants: [variant], provider };
       } catch (err) {
         falBalanceExhausted = isBalanceError(err);
-        console.error("fal image generation failed, trying aikit endpoint:", err);
+        console.error("fal image generation failed:", err);
+        // Only fall back to the third-party aikit endpoint when fal balance is empty.
+        // Other fal errors (timeout, validation) must surface — aikit often invents a wrong pack.
+        if (!falBalanceExhausted) {
+          throw err;
+        }
       }
     }
 
-    try {
-      const variant = await generateSingleVariantViaAikit(
-        sourceImageUrl,
-        settings,
-        uploadDir,
-        selectedStyle
-      );
-      return {
-        variants: [variant],
-        provider: "aikit",
-        warning: falBalanceExhausted
-          ? "Your fal.ai balance is exhausted, so we used a backup generator that may not preserve the exact product. Top up at fal.ai/dashboard/billing for accurate, product-locked results."
-          : "Used a backup image generator that may not preserve the exact product.",
-      };
-    } catch (err) {
-      console.error("Nano Banana generation failed, falling back to mock:", err);
+    if (falBalanceExhausted || !isFalConfigured()) {
+      try {
+        const variant = await generateSingleVariantViaAikit(
+          sourceImageUrl,
+          settings,
+          uploadDir,
+          selectedStyle
+        );
+        return {
+          variants: [variant],
+          provider: "aikit",
+          warning:
+            "Your fal.ai balance is exhausted, so we used a backup generator that may not preserve the exact product. Top up at fal.ai/dashboard/billing for accurate, product-locked results.",
+        };
+      } catch (err) {
+        console.error("Backup image generator failed, falling back to mock:", err);
+      }
     }
   }
 

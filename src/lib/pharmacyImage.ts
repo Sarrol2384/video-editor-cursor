@@ -1,5 +1,6 @@
 import {
   PEOPLE_FOCUS_IMAGE_PROMPT,
+  PRODUCT_REALISM_NEGATIVE,
   sceneIncludesPeople,
 } from "@/lib/productShot";
 
@@ -44,10 +45,10 @@ export function buildPharmacyBrandingExclusionPrompt(pharmacyName?: string): str
     : "Never write or display any pharmacy, store, or retailer name.";
   return [
     "ZERO BRANDING IN THE SCENE ENVIRONMENT:",
-    "No logos, shop signs, posters, shelf talkers, branded bags, uniforms, wall text, readable book spines, or any lettering anywhere in the room, shelves, walls, or background.",
-    "Use only neutral home decor — plain cushions, plants, lamps, blurred books, empty frames.",
+    "No logos, shop signs, posters, shelf talkers, branded bags, uniforms, wall text, readable book spines, street ads, or any lettering in the environment.",
+    "Neutral setting only — home, garden, park, patio, promenade, cafe outdoor seating, or soft studio. Plain furniture, plants, nature, empty frames — never a pharmacy or retail store interior.",
     nameBan,
-    "The ONLY branded object is the uploaded product pack held or placed in frame — composite it unchanged from the source photo; do not invent or redraw packaging.",
+    "The ONLY branded object is the uploaded product pack resting on a table, counter, bench, or picnic surface — keep packaging identity unchanged from the source photo, but allow natural scene lighting and a soft contact shadow so it does not look pasted.",
   ].join(" ");
 }
 
@@ -64,6 +65,7 @@ export function buildPharmacyImageNegativePrompt(pharmacyName?: string): string 
     "pharmacy sign, store logo, shop signage, wall text, readable letters, poster, shelf talker",
     "E-KEM, branded uniform, shopping bag with logo, watermark, headline text, price tag",
     "blurry product label, wrong packaging, altered product colors",
+    PRODUCT_REALISM_NEGATIVE,
   ];
   if (pharmacyName?.trim()) {
     parts.push(pharmacyName.trim());

@@ -7,14 +7,54 @@ import { normalizeAspectRatioForFal } from "@/lib/aspectRatio";
 
 let configured = false;
 
+/** Transient fal / gateway codes worth retrying on poll + submit. */
+const FAL_RETRYABLE_STATUS_CODES = [408, 429, 502, 503, 504];
+
+/** Stay under Next route / proxy limits while waiting on long video jobs. */
+const VIDEO_SUBSCRIBE_TIMEOUT_MS = 9 * 60 * 1000;
+const VIDEO_POLL_INTERVAL_MS = 2_000;
+const VIDEO_MAX_CONSECUTIVE_ERRORS = 8;
+
 function ensureConfigured() {
   if (configured) return;
   const credentials = process.env.FAL_KEY;
   if (!credentials) {
     throw new Error("FAL_KEY is not set in environment");
   }
-  fal.config({ credentials });
+  fal.config({
+    credentials,
+    retry: {
+      maxRetries: 5,
+      baseDelay: 1000,
+      maxDelay: 30_000,
+      retryableStatusCodes: FAL_RETRYABLE_STATUS_CODES,
+    },
+  });
   configured = true;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isTransientFalError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const record = err as { status?: number; message?: string; name?: string };
+  if (
+    typeof record.status === "number" &&
+    FAL_RETRYABLE_STATUS_CODES.includes(record.status)
+  ) {
+    return true;
+  }
+  const message =
+    err instanceof Error
+      ? err.message
+      : typeof record.message === "string"
+        ? record.message
+        : "";
+  return /408|429|502|503|504|timeout|fetch failed|ECONNRESET|ETIMEDOUT/i.test(
+    message
+  );
 }
 
 export function isFalConfigured(): boolean {
@@ -101,14 +141,75 @@ export interface TalkingAvatarOptions {
   onProgress?: (message: string) => void;
 }
 
+interface FalVideoOutput {
+  video?: { url?: string };
+  videos?: Array<{ url?: string }>;
+}
+
+/**
+ * Poll fal queue for long video jobs without aborting on transient 408/5xx blips.
+ * fal.subscribe() gives up after status-poll retries; video jobs often need longer.
+ */
+async function subscribeVideoJob(
+  falModelId: string,
+  input: Record<string, unknown>,
+  onProgress?: (message: string) => void
+): Promise<FalVideoOutput> {
+  ensureConfigured();
+
+  const { request_id: requestId } = await fal.queue.submit(falModelId, {
+    input,
+  });
+
+  const deadline = Date.now() + VIDEO_SUBSCRIBE_TIMEOUT_MS;
+  let consecutiveErrors = 0;
+
+  while (Date.now() < deadline) {
+    try {
+      const status = await fal.queue.status(falModelId, {
+        requestId,
+        logs: true,
+      });
+      consecutiveErrors = 0;
+
+      if (status.status === "IN_PROGRESS" && onProgress) {
+        status.logs?.forEach((log) => onProgress(log.message));
+      }
+
+      if (status.status === "COMPLETED") {
+        const result = await fal.queue.result(falModelId, { requestId });
+        return result.data as FalVideoOutput;
+      }
+    } catch (err) {
+      consecutiveErrors += 1;
+      if (
+        !isTransientFalError(err) ||
+        consecutiveErrors > VIDEO_MAX_CONSECUTIVE_ERRORS
+      ) {
+        throw err;
+      }
+      await sleep(
+        Math.min(VIDEO_POLL_INTERVAL_MS * consecutiveErrors, 15_000)
+      );
+      continue;
+    }
+
+    await sleep(VIDEO_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(
+    `HTTP 408: Request Timeout — fal.ai did not finish within ${Math.round(
+      VIDEO_SUBSCRIBE_TIMEOUT_MS / 60_000
+    )} minutes`
+  );
+}
+
 /**
  * Kling Avatar / talking-head — lip-syncs a portrait image to narration audio.
  */
 export async function runTalkingAvatar(
   options: TalkingAvatarOptions
 ): Promise<string> {
-  ensureConfigured();
-
   const input: Record<string, unknown> = {
     image_url: options.imageUrl,
     audio_url: options.audioUrl,
@@ -117,17 +218,11 @@ export async function runTalkingAvatar(
     input.prompt = options.prompt.trim();
   }
 
-  const result = await fal.subscribe(options.falModelId, {
+  const data = await subscribeVideoJob(
+    options.falModelId,
     input,
-    logs: true,
-    onQueueUpdate: (update) => {
-      if (update.status === "IN_PROGRESS" && options.onProgress) {
-        update.logs?.forEach((log) => options.onProgress?.(log.message));
-      }
-    },
-  });
-
-  const data = result.data as FalVideoOutput;
+    options.onProgress
+  );
   const url = data.video?.url || data.videos?.[0]?.url;
   if (!url) {
     throw new Error("fal talking avatar returned no video URL");
@@ -236,11 +331,6 @@ export async function editImageWithFal(options: {
   return images
     .filter((img) => img?.url)
     .map((img) => ({ url: img.url as string }));
-}
-
-interface FalVideoOutput {
-  video?: { url?: string };
-  videos?: Array<{ url?: string }>;
 }
 
 export interface ImageToVideoOptions {
@@ -361,6 +451,16 @@ export function formatFalError(
         "Try Kling O3 Standard, or regenerate your ad image without identifiable faces."
       );
     }
+    if (
+      /did not generate the expected output|unsafe content|cannot be processed as the requested output/i.test(
+        detail
+      )
+    ) {
+      return (
+        "The image model refused this scene (common with children + medicine, or a very complex prompt). " +
+        "Try a simpler Scene & Setting with adults only (no kids), or a garden/patio scene, then Generate again."
+      );
+    }
     return `${prefix}${detail}`;
   }
 
@@ -371,10 +471,11 @@ export function formatFalError(
         ? err
         : "Request failed";
 
-  if (/gateway timeout|504/i.test(raw)) {
+  if (/gateway timeout|504|408|request timeout/i.test(raw)) {
     return (
       `${context?.modelName ? `${context.modelName}: ` : ""}` +
-      "Generation timed out on fal.ai. Try Wan 2.7 or a shorter duration and retry in a moment."
+      "Generation timed out on fal.ai (often temporary under load). " +
+      "Retry in a moment, or try Wan 2.7 / a shorter duration."
     );
   }
 
@@ -454,19 +555,11 @@ function buildVideoInput(options: ImageToVideoOptions): Record<string, unknown> 
 export async function runImageToVideo(
   options: ImageToVideoOptions
 ): Promise<string> {
-  ensureConfigured();
-
-  const result = await fal.subscribe(options.falModelId, {
-    input: buildVideoInput(options),
-    logs: true,
-    onQueueUpdate: (update) => {
-      if (update.status === "IN_PROGRESS" && options.onProgress) {
-        update.logs?.forEach((log) => options.onProgress?.(log.message));
-      }
-    },
-  });
-
-  const data = result.data as FalVideoOutput;
+  const data = await subscribeVideoJob(
+    options.falModelId,
+    buildVideoInput(options),
+    options.onProgress
+  );
   const url = data.video?.url || data.videos?.[0]?.url;
   if (!url) {
     throw new Error("fal image-to-video returned no video URL");

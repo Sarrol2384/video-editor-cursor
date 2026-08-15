@@ -17,7 +17,7 @@ import { parseSettings } from "@/lib/types";
 import { buildVideoMotionPrompt } from "@/lib/videoMotion";
 import { buildTalkingAvatarPrompt, resolveAvatarDurationSec, AVATAR_MAX_DURATION_SEC } from "@/lib/avatarVideo";
 
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 export async function POST(req: NextRequest) {
   return withAuth(async (user) => {

@@ -24,6 +24,14 @@ export const PEOPLE_FOCUS_VIDEO_PROMPT =
 export const PEOPLE_NEGATIVE_PROMPT =
   "blurry faces, out of focus people, distant tiny figures, heavy background bokeh on faces, people far in background, unrecognizable faces, pharmacy sign, store logo, shop signage, wall text, readable letters, E-KEM, poster, shelf talker, branded uniform, shopping bag with logo, watermark, headline text, wrong packaging colors, altered product label";
 
+/** Keep packs looking physically in the scene — not pasted catalog cutouts. */
+export const PRODUCT_REALISM_PROMPT =
+  "COMPOSITION: This is a lifestyle family photo first, product second. People and faces stay sharp and well lit in mid-shot — never heavy bokeh on faces. The product pack is a secondary prop resting on the dining table or side table (usually to one side), natural real-world scale — not a giant centered catalog hero floating over a blurred background. " +
+  "INTEGRATION: The pack must sit firmly on the table surface with a soft contact shadow, matching the room light direction and color. No floating, no white halo, no cutout fringe, no sticker/pasted collage look. Keep packaging identity (label, logos, colors) accurate while allowing gentle relighting so it belongs in the photo.";
+
+export const PRODUCT_REALISM_NEGATIVE =
+  "floating product, hovering pack, product in mid-air, giant product hero, centered catalog cutout, cutout, white halo, hard edge composite, pasted collage, sticker look, mismatched lighting, no contact shadow, product in front of shelves without surface, blurred faces, out of focus people, heavy bokeh on family, shallow depth of field on faces, AI watermark, AI badge";
+
 /** ~1MP output sizes per aspect ratio (Bria recommendation). */
 export function getProductShotSize(aspectRatio?: string): [number, number] {
   const sizes: Record<string, [number, number]> = {
@@ -84,9 +92,9 @@ export function buildSceneDescription(
   const rawPlacement = settings.subjectPrompt;
   const placement = rawPlacement
     ? options?.pharmacy
-      ? `Product placement in scene: ${sanitizePharmacySceneText(rawPlacement, settings.pharmacyName) || "product on table, unchanged from upload"}.`
+      ? `Product placement in scene: ${sanitizePharmacySceneText(rawPlacement, settings.pharmacyName) || "product resting on the dining table in the foreground with a natural contact shadow, unchanged from upload"}.`
       : `Product placement in scene: ${rawPlacement}.`
-    : "Product placed naturally on a surface in the scene.";
+    : "Product resting on a real table or counter surface in the foreground, grounded with a soft contact shadow.";
 
   const peopleBlock = options?.pharmacy
     ? pharmacyPeopleAndBrandingBlock(
@@ -102,6 +110,7 @@ export function buildSceneDescription(
     scene,
     mood,
     placement,
+    options?.pharmacy ? PRODUCT_REALISM_PROMPT : "",
     peopleBlock,
     options?.pharmacy
       ? `${buildPharmacyBrandingExclusionPrompt(settings.pharmacyName)} ${PHARMACY_NO_ADDED_MARKETING_PROMPT}`
