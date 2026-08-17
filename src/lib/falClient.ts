@@ -10,8 +10,8 @@ let configured = false;
 /** Transient fal / gateway codes worth retrying on poll + submit. */
 const FAL_RETRYABLE_STATUS_CODES = [408, 429, 502, 503, 504];
 
-/** Stay under Next route / proxy limits while waiting on long video jobs. */
-const VIDEO_SUBSCRIBE_TIMEOUT_MS = 9 * 60 * 1000;
+/** Stay under Vercel Hobby maxDuration (300s) so we can return an error before the function is killed. */
+const VIDEO_SUBSCRIBE_TIMEOUT_MS = 4.5 * 60 * 1000;
 const VIDEO_POLL_INTERVAL_MS = 2_000;
 const VIDEO_MAX_CONSECUTIVE_ERRORS = 8;
 

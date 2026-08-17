@@ -17,7 +17,8 @@ import { parseSettings } from "@/lib/types";
 import { buildVideoMotionPrompt } from "@/lib/videoMotion";
 import { buildTalkingAvatarPrompt, resolveAvatarDurationSec, AVATAR_MAX_DURATION_SEC } from "@/lib/avatarVideo";
 
-export const maxDuration = 600;
+/** Hobby plan allows 1–300s. Higher values fail the Vercel deploy. */
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   return withAuth(async (user) => {
