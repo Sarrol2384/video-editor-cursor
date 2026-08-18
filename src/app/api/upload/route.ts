@@ -1,10 +1,8 @@
 import { NextRequest } from "next/server";
 import { v4 as uuidv4 } from "uuid";
-import path from "path";
-import fs from "fs/promises";
 import { prisma } from "@/lib/db";
 import { withAuth, jsonOk, jsonError } from "@/lib/api-utils";
-import { ensureUploadDir } from "@/lib/mockGen";
+import { saveUploadBuffer } from "@/lib/storage";
 
 export async function POST(req: NextRequest) {
   return withAuth(async (user) => {
@@ -20,15 +18,10 @@ export async function POST(req: NextRequest) {
         return jsonError("Only JPEG, PNG, WebP, and GIF images are allowed");
       }
 
-      const uploadDir = await ensureUploadDir();
       const ext = file.name.split(".").pop() || "jpg";
       const filename = `${uuidv4()}.${ext}`;
-      const filepath = path.join(uploadDir, filename);
-
       const buffer = Buffer.from(await file.arrayBuffer());
-      await fs.writeFile(filepath, buffer);
-
-      const storageUrl = `/uploads/${filename}`;
+      const storageUrl = await saveUploadBuffer(buffer, filename, file.type);
 
       const asset = await prisma.asset.create({
         data: {
@@ -64,8 +57,12 @@ export async function POST(req: NextRequest) {
       }
 
       return jsonOk({ asset });
-    } catch {
-      return jsonError("Upload failed", 500);
+    } catch (err) {
+      console.error("Upload failed:", err);
+      return jsonError(
+        err instanceof Error ? err.message : "Upload failed",
+        500
+      );
     }
   });
 }

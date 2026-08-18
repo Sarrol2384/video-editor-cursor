@@ -106,6 +106,8 @@ DIRECT_URL="postgresql://..."     # Direct connection, port 5432
 JWT_SECRET="your-secret-here"
 NEXT_PUBLIC_APP_NAME="AI Video Studio"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
+SUPABASE_URL="https://your-project-ref.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
 ```
 
 `NEXT_PUBLIC_APP_URL` is used for **share links** and absolute video URLs. On Vercel, set it to your deployment URL (e.g. `https://video-editor-cursor.vercel.app`) so copied links are not `localhost`.
@@ -126,11 +128,13 @@ npx prisma db seed
    - `JWT_SECRET` — strong random string
    - `DATABASE_URL` — Supabase Transaction pooler URL (port 6543, with `?pgbouncer=true&connection_limit=1`)
    - `DIRECT_URL` — Supabase Direct URL (port 5432)
+   - `SUPABASE_URL` — `https://<project-ref>.supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY` — Settings → API → `service_role` (keep secret)
    - API keys from your local `.env` (e.g. `FAL_KEY`)
 4. From this machine, run `npx prisma db push` and `npx prisma db seed` against those URLs (creates `demo@example.com` / `demo1234`).
 5. Deploy.
 
-**Production note:** Uploads still live in `public/uploads/` on disk. Vercel’s filesystem is ephemeral — generated files will not persist across deploys until you add **blob storage** (Vercel Blob or S3). Share links need both a public `NEXT_PUBLIC_APP_URL` and videos that remain available at that URL.
+**Production note:** Product photos, generated media, and exports are stored in a public Supabase Storage bucket named `uploads`. Share links need a public `NEXT_PUBLIC_APP_URL` and those Storage URLs.
 
 ## Next Steps (beyond MVP)
 

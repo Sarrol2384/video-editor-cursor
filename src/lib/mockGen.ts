@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import path from "path";
-import fs from "fs/promises";
+import { ensureTempDir } from "@/lib/storage";
 
 export type ImageStyle = "professional" | "lifestyle" | "minimalist" | "vibrant";
 
@@ -115,10 +114,9 @@ export function buildAudioMetadata(params: AudioGenParams) {
   };
 }
 
+/** Temp directory for ffmpeg intermediates. Durable files go through saveUploadBuffer. */
 export async function ensureUploadDir(): Promise<string> {
-  const uploadDir = path.join(process.cwd(), "public", "uploads");
-  await fs.mkdir(uploadDir, { recursive: true });
-  return uploadDir;
+  return ensureTempDir();
 }
 
 export const MUSIC_MOODS = [

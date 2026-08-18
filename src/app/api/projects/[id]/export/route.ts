@@ -4,7 +4,7 @@ import path from "path";
 import fs from "fs/promises";
 import { prisma } from "@/lib/db";
 import { withAuth, jsonOk, jsonError } from "@/lib/api-utils";
-import { ensureUploadDir } from "@/lib/mockGen";
+import { ensureTempDir, materializeLocalFile, saveUploadBuffer } from "@/lib/storage";
 import { convertWebmToMp4 } from "@/lib/ffmpeg";
 import { probeMediaDurationSec } from "@/lib/ffprobe";
 import { parseSettings } from "@/lib/types";
@@ -17,11 +17,6 @@ import {
 } from "@/lib/exportAudio";
 
 const MAX_EXPORT_BYTES = 200 * 1024 * 1024;
-
-function resolveUploadPath(storageUrl: string): string | null {
-  if (!storageUrl.startsWith("/uploads/")) return null;
-  return path.join(process.cwd(), "public", storageUrl.replace(/^\//, ""));
-}
 
 export async function POST(
   req: NextRequest,
@@ -37,8 +32,10 @@ export async function POST(
     let inputPath: string | null = null;
     let outputPath: string | null = null;
     let overlayPath: string | null = null;
+    let narrationPath: string | null = null;
     let deleteInputAfter = false;
     let deleteOverlayAfter = false;
+    let deleteNarrationAfter = false;
 
     try {
       const formData = await req.formData();
@@ -55,19 +52,16 @@ export async function POST(
 
       const generatedVideoUrl = settings.generatedVideoUrl?.trim() ?? "";
       const narrationUrl = settings.generatedNarrationUrl?.trim() ?? "";
+      const tempDir = await ensureTempDir();
 
       if ((lipSyncExport || rawOnly || overlayExport) && generatedVideoUrl) {
-        const rawPath = resolveUploadPath(generatedVideoUrl);
-        if (!rawPath) {
-          return jsonError("Generated video file path is invalid", 400);
-        }
         try {
-          await fs.access(rawPath);
+          const generated = await materializeLocalFile(generatedVideoUrl);
+          inputPath = generated.filePath;
+          deleteInputAfter = generated.cleanup;
         } catch {
-          return jsonError("Generated video file not found on server", 404);
+          return jsonError("Generated video file not found", 404);
         }
-        inputPath = rawPath;
-        deleteInputAfter = false;
 
         if (overlayExport) {
           const overlayFile = formData.get("overlay") as File | null;
@@ -77,8 +71,7 @@ export async function POST(
           if (overlayFile.size > 20 * 1024 * 1024) {
             return jsonError("Overlay image is too large", 413);
           }
-          const uploadDir = await ensureUploadDir();
-          overlayPath = path.join(uploadDir, `${uuidv4()}-overlay.png`);
+          overlayPath = path.join(tempDir, `${uuidv4()}-overlay.png`);
           deleteOverlayAfter = true;
           await fs.writeFile(
             overlayPath,
@@ -92,28 +85,26 @@ export async function POST(
           return jsonError("Export file is too large", 413);
         }
 
-        const uploadDir = await ensureUploadDir();
         const id = uuidv4();
         const videoExt =
           video.name?.toLowerCase().endsWith(".mp4") ||
           video.type.includes("mp4")
             ? ".mp4"
             : ".webm";
-        inputPath = path.join(uploadDir, `${id}-input${videoExt}`);
+        inputPath = path.join(tempDir, `${id}-input${videoExt}`);
         deleteInputAfter = true;
         await fs.writeFile(inputPath, Buffer.from(await video.arrayBuffer()));
       }
 
       let narrationExists: string | undefined;
       if (narrationUrl) {
-        const narrationPath = resolveUploadPath(narrationUrl);
-        if (narrationPath) {
-          try {
-            await fs.access(narrationPath);
-            narrationExists = narrationPath;
-          } catch {
-            console.warn("Export: narration file missing at", narrationPath);
-          }
+        try {
+          const narration = await materializeLocalFile(narrationUrl);
+          narrationPath = narration.filePath;
+          deleteNarrationAfter = narration.cleanup;
+          narrationExists = narration.filePath;
+        } catch (err) {
+          console.warn("Export: narration file missing", err);
         }
       }
 
@@ -151,9 +142,8 @@ export async function POST(
         shouldHideAvatarSubtitles(settings) &&
         Boolean(settings.videoHasEmbeddedAudio);
 
-      const uploadDir = await ensureUploadDir();
       const id = uuidv4();
-      outputPath = path.join(uploadDir, `${id}-export.mp4`);
+      outputPath = path.join(tempDir, `${id}-export.mp4`);
 
       const volumes = getExportVolumeLevels(settings);
       const muxOptions = {
@@ -212,7 +202,12 @@ export async function POST(
       }
 
       const filename = `ad-${projectId.slice(0, 8)}.mp4`;
-      const storageUrl = `/uploads/${path.basename(outputPath)}`;
+      const outputBuffer = await fs.readFile(outputPath);
+      const storageUrl = await saveUploadBuffer(
+        outputBuffer,
+        `${id}-export.mp4`,
+        "video/mp4"
+      );
 
       let shareTokenOut: string | undefined;
       if (lipSyncExport) {
@@ -262,6 +257,12 @@ export async function POST(
       }
       if (overlayPath && deleteOverlayAfter) {
         await fs.unlink(overlayPath).catch(() => {});
+      }
+      if (narrationPath && deleteNarrationAfter) {
+        await fs.unlink(narrationPath).catch(() => {});
+      }
+      if (outputPath) {
+        await fs.unlink(outputPath).catch(() => {});
       }
     }
   });

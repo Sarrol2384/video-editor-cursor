@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { withAuth, jsonOk, jsonError } from "@/lib/api-utils";
 import { reserveCredits, refundCredits } from "@/lib/credits";
 import { getModelById, estimateCredits } from "@/lib/models";
-import { ensureUploadDir, type ImageStyle } from "@/lib/mockGen";
+import { type ImageStyle } from "@/lib/mockGen";
 import { generateMockOrRealVariants } from "@/lib/imageGen";
 import { parseSettings } from "@/lib/types";
 import { formatFalError } from "@/lib/falClient";
@@ -80,14 +80,12 @@ export async function POST(req: NextRequest) {
         return jsonError(reservation.error || "Insufficient credits", 402);
       }
 
-      const uploadDir = await ensureUploadDir();
       const imageModelId =
         modelId || settings.selectedImageModelId || "nano-banana";
 
       const { variants, provider, warning } = await generateMockOrRealVariants(
         sourceImageUrl,
         settings,
-        uploadDir,
         imageModelId,
         style as ImageStyle | undefined
       );

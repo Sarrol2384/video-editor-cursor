@@ -8,6 +8,7 @@ import {
   runBriaProductShot,
   uploadImageToFal,
 } from "@/lib/falClient";
+import { isRemoteMediaUrl, saveUploadBuffer, saveUploadFromUrl } from "@/lib/storage";
 import {
   buildAgencyImagePrompt,
   buildAgencySceneDescription,
@@ -181,7 +182,7 @@ function isModelRefusalError(err: unknown): boolean {
 async function readImageInput(sourceImageUrl: string): Promise<string> {
   if (sourceImageUrl.startsWith("data:")) return sourceImageUrl;
 
-  if (sourceImageUrl.startsWith("http://") || sourceImageUrl.startsWith("https://")) {
+  if (isRemoteMediaUrl(sourceImageUrl)) {
     return sourceImageUrl;
   }
 
@@ -202,20 +203,14 @@ async function readImageInput(sourceImageUrl: string): Promise<string> {
   return `data:${mime};base64,${buffer.toString("base64")}`;
 }
 
-async function saveBase64Image(b64: string, uploadDir: string): Promise<string> {
+async function saveBase64Image(b64: string): Promise<string> {
   const raw = b64.startsWith("data:") ? b64.split(",")[1] : b64;
   const filename = `${uuidv4()}.png`;
-  await fs.writeFile(path.join(uploadDir, filename), Buffer.from(raw, "base64"));
-  return `/uploads/${filename}`;
+  return saveUploadBuffer(Buffer.from(raw, "base64"), filename, "image/png");
 }
 
-async function downloadAndSave(url: string, uploadDir: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to download generated image: ${url}`);
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const filename = `${uuidv4()}.png`;
-  await fs.writeFile(path.join(uploadDir, filename), buffer);
-  return `/uploads/${filename}`;
+async function downloadAndSave(url: string): Promise<string> {
+  return saveUploadFromUrl(url, ".png");
 }
 
 function resolveStylePreset(style?: ImageStyle) {
@@ -242,7 +237,6 @@ function resolveStyleSuffix(
 async function generateSingleVariantViaFal(
   sourceImageUrl: string,
   settings: ProjectSettings,
-  uploadDir: string,
   style?: ImageStyle,
   imageModelId = "nano-banana"
 ): Promise<{ variant: ImageVariant; provider: ImageProvider }> {
@@ -306,7 +300,7 @@ async function generateSingleVariantViaFal(
     });
     const result = results[0];
     if (result?.url) {
-      storageUrl = await downloadAndSave(result.url, uploadDir);
+      storageUrl = await downloadAndSave(result.url);
     }
   } catch (firstErr) {
     let nanoErr: unknown = firstErr;
@@ -331,7 +325,7 @@ async function generateSingleVariantViaFal(
         });
         const result = results[0];
         if (result?.url) {
-          storageUrl = await downloadAndSave(result.url, uploadDir);
+          storageUrl = await downloadAndSave(result.url);
           provider = "nano-banana";
           return {
             provider,
@@ -364,7 +358,7 @@ async function generateSingleVariantViaFal(
       shotSize,
       placement,
     });
-    storageUrl = await downloadAndSave(resultUrl, uploadDir);
+    storageUrl = await downloadAndSave(resultUrl);
   }
 
   return {
@@ -384,7 +378,6 @@ async function generateSingleVariantViaFal(
 async function generateSingleVariantViaAikit(
   sourceImageUrl: string,
   settings: ProjectSettings,
-  uploadDir: string,
   style?: ImageStyle
 ): Promise<ImageVariant> {
   const { style: presetStyle, label, suffix } = resolveStylePreset(style);
@@ -411,9 +404,9 @@ async function generateSingleVariantViaAikit(
   let storageUrl = sourceImageUrl;
 
   if (result?.b64_json) {
-    storageUrl = await saveBase64Image(result.b64_json, uploadDir);
+    storageUrl = await saveBase64Image(result.b64_json);
   } else if (result?.url) {
-    storageUrl = await downloadAndSave(result.url, uploadDir);
+    storageUrl = await downloadAndSave(result.url);
   }
 
   return {
@@ -446,7 +439,6 @@ function isBalanceError(err: unknown): boolean {
 export async function generateMockOrRealVariants(
   sourceImageUrl: string,
   settings: ProjectSettings,
-  uploadDir: string,
   imageModelId: string,
   style?: ImageStyle
 ): Promise<{
@@ -463,7 +455,6 @@ export async function generateMockOrRealVariants(
         const { variant, provider } = await generateSingleVariantViaFal(
           sourceImageUrl,
           settings,
-          uploadDir,
           selectedStyle,
           imageModelId
         );
@@ -484,7 +475,6 @@ export async function generateMockOrRealVariants(
         const variant = await generateSingleVariantViaAikit(
           sourceImageUrl,
           settings,
-          uploadDir,
           selectedStyle
         );
         return {

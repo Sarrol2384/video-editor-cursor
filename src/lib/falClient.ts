@@ -1,9 +1,9 @@
 import path from "path";
 import fs from "fs/promises";
-import { v4 as uuidv4 } from "uuid";
 import { fal } from "@fal-ai/client";
 import type { XaiVoice } from "@/lib/voiceMapping";
 import { normalizeAspectRatioForFal } from "@/lib/aspectRatio";
+import { saveUploadFromUrl } from "@/lib/storage";
 
 let configured = false;
 
@@ -639,19 +639,12 @@ export async function runVisionLlm(options: {
 }
 
 /**
- * Download a remote file into public/uploads and return its local URL.
+ * Download a remote file into storage and return its public URL.
  */
 export async function downloadToUploads(
   url: string,
-  uploadDir: string,
+  _uploadDir: string,
   extension: string
 ): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to download file: ${url} (${response.status})`);
-  }
-  const buffer = Buffer.from(await response.arrayBuffer());
-  const filename = `${uuidv4()}${extension}`;
-  await fs.writeFile(path.join(uploadDir, filename), buffer);
-  return `/uploads/${filename}`;
+  return saveUploadFromUrl(url, extension);
 }

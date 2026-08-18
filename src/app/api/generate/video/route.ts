@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { withAuth, jsonOk, jsonError } from "@/lib/api-utils";
 import { reserveCredits, refundCredits } from "@/lib/credits";
 import { getModelById, estimateCredits, isAvatarVideoModel, validateVideoModelSettings, resolveVideoModelId } from "@/lib/models";
-import { simulateDelay, buildVideoMetadata, ensureUploadDir } from "@/lib/mockGen";
+import { simulateDelay, buildVideoMetadata } from "@/lib/mockGen";
 import {
   isFalConfigured,
   uploadImageToFal,
@@ -120,7 +120,7 @@ export async function POST(req: NextRequest) {
         return jsonError(reservation.error || "Insufficient credits", 402);
       }
 
-      const uploadDir = await ensureUploadDir();
+      const uploadDir = "";
       const motionPrompt = buildVideoMotionPrompt(settings);
       const avatarPrompt = buildTalkingAvatarPrompt();
 

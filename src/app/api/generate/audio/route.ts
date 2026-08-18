@@ -1,10 +1,10 @@
 import { NextRequest } from "next/server";
-import path from "path";
+import fs from "fs/promises";
 import { prisma } from "@/lib/db";
 import { withAuth, jsonOk, jsonError } from "@/lib/api-utils";
 import { reserveCredits, refundCredits } from "@/lib/credits";
 import { getModelById, estimateCredits } from "@/lib/models";
-import { buildAudioMetadata, ensureUploadDir } from "@/lib/mockGen";
+import { buildAudioMetadata } from "@/lib/mockGen";
 import { parseSettings } from "@/lib/types";
 import {
   downloadToUploads,
@@ -14,6 +14,7 @@ import {
 import { mapVoiceToXai } from "@/lib/voiceMapping";
 import { probeMediaDurationSec } from "@/lib/ffprobe";
 import { clampExportDurationSec } from "@/lib/exportAudio";
+import { materializeLocalFile } from "@/lib/storage";
 
 export async function POST(req: NextRequest) {
   return withAuth(async (user) => {
@@ -86,8 +87,7 @@ export async function POST(req: NextRequest) {
             text: effectiveScript,
             voice: xaiVoice,
           });
-          const uploadDir = await ensureUploadDir();
-          narrationUrl = await downloadToUploads(remoteUrl, uploadDir, ".mp3");
+          narrationUrl = await downloadToUploads(remoteUrl, "", ".mp3");
           provider = "xai-tts";
         } catch (err) {
           console.error("xAI TTS failed:", err);
@@ -166,17 +166,22 @@ export async function POST(req: NextRequest) {
       settings.musicMood = effectiveMood;
       settings.generatedNarrationUrl = narrationUrl;
 
-      const narrationPath = path.join(
-        process.cwd(),
-        "public",
-        narrationUrl.replace(/^\//, "")
-      );
-      const measuredSec = await probeMediaDurationSec(narrationPath);
-      if (measuredSec != null && measuredSec > 0) {
-        settings.generatedNarrationDuration = measuredSec;
-        settings.duration = clampExportDurationSec(
-          Math.max(settings.duration ?? 8, Math.ceil(measuredSec))
-        );
+      let localNarration: { filePath: string; cleanup: boolean } | null = null;
+      try {
+        localNarration = await materializeLocalFile(narrationUrl);
+        const measuredSec = await probeMediaDurationSec(localNarration.filePath);
+        if (measuredSec != null && measuredSec > 0) {
+          settings.generatedNarrationDuration = measuredSec;
+          settings.duration = clampExportDurationSec(
+            Math.max(settings.duration ?? 8, Math.ceil(measuredSec))
+          );
+        }
+      } catch (probeErr) {
+        console.warn("Could not measure narration duration:", probeErr);
+      } finally {
+        if (localNarration?.cleanup) {
+          await fs.unlink(localNarration.filePath).catch(() => {});
+        }
       }
 
       await prisma.generationJob.update({
