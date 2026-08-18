@@ -107,7 +107,13 @@ export async function POST(
           deleteNarrationAfter = narration.cleanup;
           narrationExists = narration.filePath;
         } catch (err) {
-          console.warn("Export: narration file missing", err);
+          console.error("Export: narration file missing", err);
+          if (!lipSyncExport && !rawOnly) {
+            return jsonError(
+              "Narration audio could not be loaded for export. Go back to the Audio step, generate narration again, then export MP4.",
+              422
+            );
+          }
         }
       }
 

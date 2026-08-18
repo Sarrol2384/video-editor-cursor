@@ -191,6 +191,10 @@ export function ExportButton({
   const [phase, setPhase] = useState<ExportPhase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
+  const [lastExport, setLastExport] = useState<{
+    url: string;
+    filename: string;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const hasAudio = hasExportAudio(settings);
@@ -703,11 +707,46 @@ export function ExportButton({
     setTimeout(() => setShareLinkCopied(false), 2500);
   }
 
-  function downloadUrl(url: string, filename: string) {
+  async function downloadUrl(url: string, filename: string) {
+    // Cross-origin Storage URLs ignore <a download> and open in the tab instead.
+    // Proxy through our API so the browser always gets Content-Disposition: attachment.
+    const isRemote =
+      url.startsWith("http://") || url.startsWith("https://");
+    const href = isRemote
+      ? `/api/media/download?url=${encodeURIComponent(url)}&filename=${encodeURIComponent(filename)}`
+      : url;
+
+    if (!isRemote) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
+    const response = await fetch(href);
+    if (!response.ok) {
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(data?.error || "Failed to download exported file");
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
+    a.href = objectUrl;
     a.download = filename;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+  }
+
+  async function finishExportDownload(url: string, filename: string) {
+    setLastExport({ url, filename });
+    await downloadUrl(url, filename);
   }
 
   function handleCancelExport() {
@@ -735,7 +774,7 @@ export function ExportButton({
         setProgress(40);
         setPhase("converting");
         const { url: mp4Url, shareToken } = await exportLipSyncOnServer({}, signal);
-        downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
+        await finishExportDownload(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
         onExported?.(mp4Url);
         await persistShareSettings({
           shareExportUrl: mp4Url,
@@ -769,7 +808,7 @@ export function ExportButton({
           exportDurationSec,
           signal
         );
-        downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
+        await finishExportDownload(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
         onExported?.(mp4Url);
         setProgress(100);
         return;
@@ -799,7 +838,7 @@ export function ExportButton({
         canvasExport,
         exportDurationSec,
       });
-      downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
+      await finishExportDownload(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
       onExported?.(mp4Url);
       setProgress(100);
     } catch (err) {
@@ -832,7 +871,7 @@ export function ExportButton({
     try {
       setProgress(40);
       const { url: mp4Url } = await exportLipSyncOnServer({ rawOnly: true }, signal);
-      downloadUrl(mp4Url, `ad-${projectId.slice(0, 8)}-raw.mp4`);
+      await finishExportDownload(mp4Url, `ad-${projectId.slice(0, 8)}-raw.mp4`);
       setProgress(100);
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -945,6 +984,23 @@ export function ExportButton({
         <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
           {error}
         </p>
+      )}
+
+      {lastExport && !exporting && (
+        <button
+          type="button"
+          onClick={() =>
+            void finishExportDownload(lastExport.url, lastExport.filename).catch(
+              (err) =>
+                setError(
+                  err instanceof Error ? err.message : "Download failed"
+                )
+            )
+          }
+          className="btn-secondary w-full py-3 text-base"
+        >
+          Download MP4 again
+        </button>
       )}
 
       {videoUrl && !exporting && embeddedSpeech && (

@@ -159,8 +159,20 @@ export async function materializeLocalFile(
   if (!urlOrPath.startsWith("/uploads/")) {
     throw new Error("Invalid media path");
   }
+  const filePath = path.join(
+    process.cwd(),
+    "public",
+    urlOrPath.replace(/^\//, "")
+  );
+  try {
+    await fs.access(filePath);
+  } catch {
+    throw new Error(
+      `Local media file not found (${urlOrPath}). Re-generate this asset so it is stored in Supabase Storage.`
+    );
+  }
   return {
-    filePath: path.join(process.cwd(), "public", urlOrPath.replace(/^\//, "")),
+    filePath,
     cleanup: false,
   };
 }
