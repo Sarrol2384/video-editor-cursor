@@ -18,6 +18,9 @@ import {
 
 const MAX_EXPORT_BYTES = 200 * 1024 * 1024;
 
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }

@@ -1,8 +1,11 @@
 import { spawn } from "child_process";
 import { existsSync } from "fs";
-import ffmpegStatic from "ffmpeg-static";
 import { resolveMoodConfig } from "@/lib/moodMusic";
 import { ffmpegAvatarSubtitleCropFilter } from "@/lib/avatarSubtitles";
+import {
+  ffmpegCandidatePaths,
+  resolveFfmpegExecutable,
+} from "@/lib/ffmpegPath";
 
 const BASE_FFMPEG_TIMEOUT_MS = 180_000;
 const MUSIC_SOURCE_DURATION_SEC = 65;
@@ -24,31 +27,6 @@ export interface AudioMuxOptions {
   imageFit?: "contain" | "cover";
   /** Transparent PNG burned onto every video frame (static text/QR). */
   overlayImagePath?: string;
-}
-
-function resolveFfmpegExecutable(): string {
-  // `ffmpeg-static` export shape can vary between CJS/ESM interop. In dev it is
-  // often a string path, but in production it may be an object.
-  const bundledUnknown: unknown = ffmpegStatic as unknown;
-
-  const fromString =
-    typeof bundledUnknown === "string" ? bundledUnknown : null;
-
-  const fromObj = (() => {
-    if (!bundledUnknown || typeof bundledUnknown !== "object") return null;
-    const record = bundledUnknown as Record<string, unknown>;
-    const maybeDefault = record.default;
-    if (typeof maybeDefault === "string") return maybeDefault;
-    const maybePath = record.path;
-    if (typeof maybePath === "string") return maybePath;
-    return null;
-  })();
-
-  const bundled = fromString ?? fromObj;
-
-  // Prefer the bundled ffmpeg-static binary; fall back only if we couldn't
-  // extract a path (then spawn will likely fail with ENOENT, which we'll log).
-  return bundled || "ffmpeg";
 }
 
 function ffmpegTimeoutMs(targetDurationSec?: number): number {
@@ -423,10 +401,14 @@ export async function convertWebmToMp4(
   const timeoutMs = ffmpegTimeoutMs(audio?.targetDurationSec);
 
   return new Promise((resolve, reject) => {
-    if (process.env.VERCEL) {
-      const exists = existsSync(executable);
-      console.error("[ffmpeg] executable", { executable, exists });
-    }
+    const candidates = ffmpegCandidatePaths();
+    console.error("[ffmpeg] spawn", {
+      executable,
+      exists: existsSync(executable),
+      candidates: candidates.map((p) => ({ path: p, exists: existsSync(p) })),
+      cwd: process.cwd(),
+      platform: process.platform,
+    });
 
     const proc = spawn(executable, args, {
       stdio: ["ignore", "ignore", "pipe"],
@@ -449,9 +431,12 @@ export async function convertWebmToMp4(
     proc.on("error", (err: NodeJS.ErrnoException) => {
       clearTimeout(timeout);
       if (err.code === "ENOENT") {
+        const tried = candidates
+          .map((p) => `${p} (${existsSync(p) ? "found" : "missing"})`)
+          .join("; ");
         reject(
           new Error(
-            "ffmpeg could not be started. Reinstall dependencies (npm install) or install ffmpeg on PATH."
+            `ffmpeg could not be started (ENOENT). Tried: ${tried || executable}`
           )
         );
         return;

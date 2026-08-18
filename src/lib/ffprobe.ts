@@ -1,12 +1,5 @@
 import { spawn } from "child_process";
-import { existsSync } from "fs";
-import ffmpegStatic from "ffmpeg-static";
-
-function resolveFfmpegExecutable(): string {
-  const bundled = typeof ffmpegStatic === "string" ? ffmpegStatic : null;
-  if (bundled && existsSync(bundled)) return bundled;
-  return "ffmpeg";
-}
+import { resolveFfmpegExecutable } from "@/lib/ffmpegPath";
 
 /** Parse `Duration: HH:MM:SS.ms` from ffmpeg stderr. */
 export async function probeMediaDurationSec(
