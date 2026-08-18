@@ -27,13 +27,28 @@ export interface AudioMuxOptions {
 }
 
 function resolveFfmpegExecutable(): string {
-  const bundled = typeof ffmpegStatic === "string" ? ffmpegStatic : null;
-  // On serverless platforms, relying on `existsSync()` can be flaky (binary is
-  // sometimes unpacked or symlinked after the check). If `ffmpeg-static`
-  // provided a path, always prefer it so spawn doesn't fall back to a system
-  // `ffmpeg` binary that often isn't available.
-  if (bundled) return bundled;
-  return "ffmpeg";
+  // `ffmpeg-static` export shape can vary between CJS/ESM interop. In dev it is
+  // often a string path, but in production it may be an object.
+  const bundledUnknown: unknown = ffmpegStatic as unknown;
+
+  const fromString =
+    typeof bundledUnknown === "string" ? bundledUnknown : null;
+
+  const fromObj = (() => {
+    if (!bundledUnknown || typeof bundledUnknown !== "object") return null;
+    const record = bundledUnknown as Record<string, unknown>;
+    const maybeDefault = record.default;
+    if (typeof maybeDefault === "string") return maybeDefault;
+    const maybePath = record.path;
+    if (typeof maybePath === "string") return maybePath;
+    return null;
+  })();
+
+  const bundled = fromString ?? fromObj;
+
+  // Prefer the bundled ffmpeg-static binary; fall back only if we couldn't
+  // extract a path (then spawn will likely fail with ENOENT, which we'll log).
+  return bundled || "ffmpeg";
 }
 
 function ffmpegTimeoutMs(targetDurationSec?: number): number {
@@ -408,6 +423,11 @@ export async function convertWebmToMp4(
   const timeoutMs = ffmpegTimeoutMs(audio?.targetDurationSec);
 
   return new Promise((resolve, reject) => {
+    if (process.env.VERCEL) {
+      const exists = existsSync(executable);
+      console.error("[ffmpeg] executable", { executable, exists });
+    }
+
     const proc = spawn(executable, args, {
       stdio: ["ignore", "ignore", "pipe"],
     });
