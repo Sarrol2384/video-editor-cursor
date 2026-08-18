@@ -28,9 +28,11 @@ export interface AudioMuxOptions {
 
 function resolveFfmpegExecutable(): string {
   const bundled = typeof ffmpegStatic === "string" ? ffmpegStatic : null;
-  if (bundled && existsSync(bundled)) {
-    return bundled;
-  }
+  // On serverless platforms, relying on `existsSync()` can be flaky (binary is
+  // sometimes unpacked or symlinked after the check). If `ffmpeg-static`
+  // provided a path, always prefer it so spawn doesn't fall back to a system
+  // `ffmpeg` binary that often isn't available.
+  if (bundled) return bundled;
   return "ffmpeg";
 }
 
