@@ -11,12 +11,12 @@ A Next.js full-stack web application for creating business-ready video advertise
 - **Business controls**: freeze product, freeze text, overlay text, motion intensity
 - **Industry templates**: Pharmacy, Retail, Social, E-Commerce, Explainer
 - **MP4 export** with burned-in text, mixed narration + music (browser render → server ffmpeg)
-- **Asset library** with project and asset persistence (SQLite)
+- **Asset library** with project and asset persistence (Postgres)
 
 ## Tech Stack
 
 - Next.js 14 (App Router) + TypeScript + Tailwind CSS
-- Prisma ORM + SQLite (local dev)
+- Prisma ORM + Postgres (Supabase)
 - JWT auth (jose + bcryptjs)
 - Local file storage (`public/uploads/`)
 
@@ -30,7 +30,8 @@ cd I:\Dev\video-creation-app
 # Install dependencies
 npm install
 
-# Create database and seed demo data
+# Copy .env.example to .env and paste your Supabase connection strings
+# Create database tables and seed the demo user
 npx prisma db push
 npx prisma db seed
 
@@ -84,7 +85,7 @@ public/
 |---------|-------------|
 | `npm run dev` | Start dev server |
 | `npm run build` | Production build |
-| `npm run db:push` | Sync Prisma schema to SQLite |
+| `npm run db:push` | Sync Prisma schema to Postgres |
 | `npm run db:seed` | Seed demo user and templates |
 | `npm run db:studio` | Open Prisma Studio (DB browser) |
 
@@ -97,16 +98,24 @@ public/
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and adjust:
+Copy `.env.example` to `.env` and paste your Supabase connection strings:
 
 ```
-DATABASE_URL="file:./dev.db"   # stored at prisma/dev.db
+DATABASE_URL="postgresql://..."   # Transaction pooler, port 6543, ?pgbouncer=true&connection_limit=1
+DIRECT_URL="postgresql://..."     # Direct connection, port 5432
 JWT_SECRET="your-secret-here"
 NEXT_PUBLIC_APP_NAME="AI Video Studio"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 ```
 
 `NEXT_PUBLIC_APP_URL` is used for **share links** and absolute video URLs. On Vercel, set it to your deployment URL (e.g. `https://video-editor-cursor.vercel.app`) so copied links are not `localhost`.
+
+Create tables and the demo user once (do not add seed to the Vercel build — it resets demo credits to 500):
+
+```powershell
+npx prisma db push
+npx prisma db seed
+```
 
 ## Deploying to Vercel
 
@@ -115,11 +124,13 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 3. Environment variables:
    - `NEXT_PUBLIC_APP_URL` — your Vercel URL (or custom domain)
    - `JWT_SECRET` — strong random string
-   - `DATABASE_URL` — hosted Postgres (Neon, Vercel Postgres, etc.)
+   - `DATABASE_URL` — Supabase Transaction pooler URL (port 6543, with `?pgbouncer=true&connection_limit=1`)
+   - `DIRECT_URL` — Supabase Direct URL (port 5432)
    - API keys from your local `.env` (e.g. `FAL_KEY`)
-4. Deploy.
+4. From this machine, run `npx prisma db push` and `npx prisma db seed` against those URLs (creates `demo@example.com` / `demo1234`).
+5. Deploy.
 
-**Production note:** The MVP uses SQLite and `public/uploads/` on disk. Vercel’s filesystem is ephemeral — uploads and exports will not persist across deploys until you migrate to **hosted Postgres** and **blob storage** (Vercel Blob or S3). Share links need both a public `NEXT_PUBLIC_APP_URL` and videos that remain available at that URL.
+**Production note:** Uploads still live in `public/uploads/` on disk. Vercel’s filesystem is ephemeral — generated files will not persist across deploys until you add **blob storage** (Vercel Blob or S3). Share links need both a public `NEXT_PUBLIC_APP_URL` and videos that remain available at that URL.
 
 ## Next Steps (beyond MVP)
 
@@ -128,4 +139,3 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 - Mobile apps (React Native)
 - Batch generation (CSV upload)
 - S3/CloudFront for production storage
-- PostgreSQL for production database
