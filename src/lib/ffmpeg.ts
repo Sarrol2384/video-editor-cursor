@@ -27,6 +27,8 @@ export interface AudioMuxOptions {
   imageFit?: "contain" | "cover";
   /** Transparent PNG burned onto every video frame (static text/QR). */
   overlayImagePath?: string;
+  /** Still image (PNG/JPG) looped to target duration instead of video input. */
+  inputIsStillImage?: boolean;
 }
 
 function ffmpegTimeoutMs(targetDurationSec?: number): number {
@@ -73,8 +75,26 @@ function clampVolume(value: number | undefined, fallback: number): number {
 function videoInput(
   inputPath: string,
   targetDurationSec?: number,
-  inputVideoDurationSec?: number
+  inputVideoDurationSec?: number,
+  inputIsStillImage?: boolean
 ): string[] {
+  if (inputIsStillImage) {
+    const durationSec =
+      typeof targetDurationSec === "number" && targetDurationSec > 0
+        ? targetDurationSec
+        : 8;
+    return [
+      "-loop",
+      "1",
+      "-framerate",
+      "30",
+      "-t",
+      String(durationSec),
+      "-i",
+      inputPath,
+    ];
+  }
+
   if (
     !targetDurationSec ||
     !inputVideoDurationSec ||
@@ -206,7 +226,12 @@ function buildFfmpegArgs(
   const narrVol = clampVolume(audio?.narrationVolume, 1);
   const musicVol = clampVolume(audio?.musicVolume, 0);
 
-  const vIn = videoInput(inputPath, targetDurationSec, inputVideoDurationSec);
+  const vIn = videoInput(
+    inputPath,
+    targetDurationSec,
+    inputVideoDurationSec,
+    audio?.inputIsStillImage
+  );
 
   if (useEmbedded && wantsMusic && !narrationPath) {
     const { input: musicInput, lowpass } = buildMoodMusicSource(

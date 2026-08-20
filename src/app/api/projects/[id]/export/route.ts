@@ -47,6 +47,7 @@ export async function POST(
       const rawOnly = formData.get("rawOnly") === "1";
       const canvasExport = formData.get("canvasExport") === "1";
       const overlayExport = formData.get("overlayExport") === "1";
+      const stillImageExport = formData.get("stillImageExport") === "1";
       const exportDurationRaw = formData.get("exportDurationSec");
       const clientExportDuration =
         typeof exportDurationRaw === "string"
@@ -71,6 +72,36 @@ export async function POST(
           if (!overlayFile || overlayFile.size === 0) {
             return jsonError("No overlay image provided", 400);
           }
+          if (overlayFile.size > 20 * 1024 * 1024) {
+            return jsonError("Overlay image is too large", 413);
+          }
+          overlayPath = path.join(tempDir, `${uuidv4()}-overlay.png`);
+          deleteOverlayAfter = true;
+          await fs.writeFile(
+            overlayPath,
+            Buffer.from(await overlayFile.arrayBuffer())
+          );
+        }
+      } else if (stillImageExport) {
+        const sourceImageUrl = (
+          settings.selectedImageUrl ||
+          settings.sourceImageUrl ||
+          ""
+        ).trim();
+        if (!sourceImageUrl) {
+          return jsonError("No source image found for export", 404);
+        }
+
+        try {
+          const sourceImage = await materializeLocalFile(sourceImageUrl);
+          inputPath = sourceImage.filePath;
+          deleteInputAfter = sourceImage.cleanup;
+        } catch {
+          return jsonError("Source image file not found", 404);
+        }
+
+        const overlayFile = formData.get("overlay") as File | null;
+        if (overlayFile && overlayFile.size > 0) {
           if (overlayFile.size > 20 * 1024 * 1024) {
             return jsonError("Overlay image is too large", 413);
           }
@@ -118,12 +149,13 @@ export async function POST(
       }
 
       const useEmbeddedAudio =
-        lipSyncExport ||
-        rawOnly ||
-        (Boolean(settings.videoHasEmbeddedAudio) &&
-          !canvasExport &&
-          !overlayExport &&
-          !narrationExists);
+        !stillImageExport &&
+        (lipSyncExport ||
+          rawOnly ||
+          (Boolean(settings.videoHasEmbeddedAudio) &&
+            !canvasExport &&
+            !overlayExport &&
+            !narrationExists));
 
       const inputVideoDurationSec = await probeMediaDurationSec(inputPath!);
 
@@ -170,6 +202,7 @@ export async function POST(
         outputHeight: height,
         imageFit: settings.imageFit || "contain",
         overlayImagePath: overlayPath ?? undefined,
+        inputIsStillImage: stillImageExport || undefined,
       };
 
       try {
@@ -187,6 +220,7 @@ export async function POST(
             outputHeight: height,
             imageFit: settings.imageFit || "contain",
             overlayImagePath: overlayPath ?? undefined,
+            inputIsStillImage: stillImageExport || undefined,
           });
         } else if (useEmbeddedAudio) {
           await convertWebmToMp4(inputPath!, outputPath, {
@@ -197,6 +231,7 @@ export async function POST(
             outputHeight: height,
             imageFit: settings.imageFit || "contain",
             overlayImagePath: overlayPath ?? undefined,
+            inputIsStillImage: stillImageExport || undefined,
           });
         } else {
           await convertWebmToMp4(inputPath!, outputPath, {
@@ -206,6 +241,7 @@ export async function POST(
             outputHeight: height,
             imageFit: settings.imageFit || "contain",
             overlayImagePath: overlayPath ?? undefined,
+            inputIsStillImage: stillImageExport || undefined,
           });
         }
       }

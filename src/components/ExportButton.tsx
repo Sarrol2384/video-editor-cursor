@@ -20,6 +20,7 @@ import { waitForExportFonts } from "@/lib/textFonts";
 import { isAgencyWorkflow } from "@/lib/studioWorkflow";
 import { loadQrOverlayImages } from "@/lib/qrOverlay";
 import { getClientShareBaseUrl } from "@/lib/appUrl";
+import { formatApiError, isUnauthorized } from "@/lib/clientApi";
 import { AvatarSubtitleToggle } from "@/components/AvatarSubtitleToggle";
 
 interface ExportButtonProps {
@@ -42,6 +43,25 @@ type ExportMode = "lipSyncOnly" | "standard";
 
 const VIDEO_LOAD_TIMEOUT_MS = 12_000;
 const ASSET_LOAD_TIMEOUT_MS = 12_000;
+
+function supabaseDirectDownloadUrl(url: string, filename: string): string | null {
+  if (!url.includes("/storage/v1/object/public/")) return null;
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}download=${encodeURIComponent(filename)}`;
+}
+
+function formatFetchFailure(err: unknown): string {
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return "Export cancelled.";
+  }
+  if (err instanceof TypeError && /failed to fetch/i.test(err.message)) {
+    return (
+      "Export could not reach the server (network timeout or connection reset). " +
+      "Log out, sign in again, then retry. If it still fails, wait a minute and try again."
+    );
+  }
+  return err instanceof Error ? err.message : "Export failed";
+}
 
 function pickVideoRecorderMimeType(withAudio: boolean): string {
   const candidates = withAudio
@@ -609,6 +629,24 @@ export function ExportButton({
     return postExportForm(formData, signal);
   }
 
+  async function exportViaServerStillImage(
+    exportDurationSec: number,
+    signal?: AbortSignal
+  ): Promise<{ url: string; shareToken?: string }> {
+    setPhase("loading");
+    setProgress(25);
+    const formData = new FormData();
+    formData.append("stillImageExport", "1");
+    formData.append("exportDurationSec", String(exportDurationSec));
+    if (needsTextBurnIn) {
+      const overlayBlob = await renderOverlayPng(settings);
+      formData.append("overlay", overlayBlob, "overlay.png");
+    }
+    setPhase("converting");
+    setProgress(85);
+    return postExportForm(formData, signal);
+  }
+
   async function postExportForm(
     formData: FormData,
     signal?: AbortSignal
@@ -616,20 +654,38 @@ export function ExportButton({
     setPhase("converting");
     setProgress(90);
 
-    const response = await fetch(`/api/projects/${projectId}/export`, {
-      method: "POST",
-      body: formData,
-      signal,
-    });
+    let response: Response;
+    try {
+      response = await fetch(`/api/projects/${projectId}/export`, {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+        signal,
+      });
+    } catch (err) {
+      throw new Error(formatFetchFailure(err));
+    }
 
-    const data = (await response.json()) as {
+    let data: {
       url?: string;
       filename?: string;
       shareToken?: string;
       error?: string;
     };
+    try {
+      data = (await response.json()) as typeof data;
+    } catch {
+      throw new Error(
+        response.ok
+          ? "Export succeeded but the server returned an invalid response."
+          : `Export failed (${response.status}). Log out, sign in again, then retry.`
+      );
+    }
 
     if (!response.ok) {
+      if (isUnauthorized(response.status)) {
+        throw new Error(formatApiError(response.status, data.error));
+      }
       throw new Error(data.error || "MP4 conversion failed");
     }
 
@@ -708,8 +764,19 @@ export function ExportButton({
   }
 
   async function downloadUrl(url: string, filename: string) {
-    // Cross-origin Storage URLs ignore <a download> and open in the tab instead.
-    // Proxy through our API so the browser always gets Content-Disposition: attachment.
+    const directDownload = supabaseDirectDownloadUrl(url, filename);
+    if (directDownload) {
+      const a = document.createElement("a");
+      a.href = directDownload;
+      a.download = filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return;
+    }
+
+    // Cross-origin Storage URLs ignore <a download> without Supabase ?download=.
     const isRemote =
       url.startsWith("http://") || url.startsWith("https://");
     const href = isRemote
@@ -726,11 +793,19 @@ export function ExportButton({
       return;
     }
 
-    const response = await fetch(href);
+    let response: Response;
+    try {
+      response = await fetch(href, { credentials: "include" });
+    } catch (err) {
+      throw new Error(formatFetchFailure(err));
+    }
     if (!response.ok) {
       const data = (await response.json().catch(() => null)) as {
         error?: string;
       } | null;
+      if (isUnauthorized(response.status)) {
+        throw new Error(formatApiError(response.status, data?.error));
+      }
       throw new Error(data?.error || "Failed to download exported file");
     }
     const blob = await response.blob();
@@ -824,14 +899,17 @@ export function ExportButton({
           videoDurationSec,
           signal
         );
-      } else {
-        canvasExport = true;
-        if (needsTextBurnIn) {
-          await waitForExportFonts(settings.textLayers);
-        }
+      } else if (!videoUrl) {
         exportDurationSec = resolveExportDurationSec(settings, null);
         setProgress(10);
-        videoBlob = await exportFromImage(exportDurationSec, signal);
+        const { url: mp4Url } = await exportViaServerStillImage(
+          exportDurationSec,
+          signal
+        );
+        await finishExportDownload(mp4Url, `ad-${projectId.slice(0, 8)}.mp4`);
+        onExported?.(mp4Url);
+        setProgress(100);
+        return;
       }
 
       const { url: mp4Url } = await uploadAndConvert(videoBlob, signal, {
@@ -842,12 +920,8 @@ export function ExportButton({
       onExported?.(mp4Url);
       setProgress(100);
     } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        setError("Export cancelled.");
-      } else {
-        console.error("Export failed:", err);
-        setError(err instanceof Error ? err.message : "Export failed");
-      }
+      console.error("Export failed:", err);
+      setError(formatFetchFailure(err));
     } finally {
       abortRef.current = null;
       setExporting(false);

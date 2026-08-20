@@ -33,24 +33,39 @@ export async function destroySession() {
   cookies().delete(COOKIE_NAME);
 }
 
+function clearSessionCookie() {
+  cookies().delete(COOKIE_NAME);
+}
+
 export async function getSessionUser(): Promise<SessionUser | null> {
   const token = cookies().get(COOKIE_NAME)?.value;
   if (!token) return null;
 
+  let userId: string;
   try {
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    const userId = payload.userId as string;
-    const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return null;
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      credits: user.credits,
-    };
+    userId = payload.userId as string;
+    if (!userId) {
+      clearSessionCookie();
+      return null;
+    }
   } catch {
+    // Invalid or expired token — clear stale cookie so the client can re-login.
+    clearSessionCookie();
     return null;
   }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    clearSessionCookie();
+    return null;
+  }
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    credits: user.credits,
+  };
 }
 
 export async function requireUser(): Promise<SessionUser> {

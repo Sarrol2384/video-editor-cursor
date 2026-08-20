@@ -17,6 +17,7 @@ import {
   stopActiveAudioPreview,
 } from "@/lib/audioPreview";
 import { FetchTimeoutError, fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { authFetchInit, formatApiError, isUnauthorized } from "@/lib/clientApi";
 import { getNarrationDurationSec } from "@/lib/exportAudio";
 import { AVATAR_MAX_DURATION_SEC } from "@/lib/avatarVideo";
 import { estimateCredits, getModelById, isAvatarVideoModel } from "@/lib/models";
@@ -129,8 +130,8 @@ export default function StudioPage() {
 
     try {
       const [projRes, meRes] = await Promise.all([
-        fetchWithTimeout(`/api/projects/${projectId}`),
-        fetchWithTimeout("/api/auth/me").catch(() => null),
+        fetchWithTimeout(`/api/projects/${projectId}`, authFetchInit),
+        fetchWithTimeout("/api/auth/me", authFetchInit).catch(() => null),
       ]);
 
       let projData: { project?: { name: string; step?: number; settings?: ProjectSettings } };
@@ -142,6 +143,10 @@ export default function StudioPage() {
       }
 
       if (!projRes.ok) {
+        if (isUnauthorized(projRes.status)) {
+          router.push("/login?reason=session");
+          return;
+        }
         router.push("/dashboard");
         return;
       }
@@ -225,6 +230,7 @@ export default function StudioPage() {
     });
     await fetch(`/api/projects/${projectId}`, {
       method: "PATCH",
+      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         settings: apiSettings,
@@ -257,9 +263,17 @@ export default function StudioPage() {
       formData.append("file", file);
       formData.append("projectId", projectId);
 
-      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        credentials: "include",
+        body: formData,
+      });
       const data = await res.json();
       if (!res.ok) {
+        if (isUnauthorized(res.status)) {
+          router.push("/login?reason=session");
+          return;
+        }
         setError(data.error || "Upload failed");
         return;
       }
@@ -339,6 +353,7 @@ export default function StudioPage() {
     try {
       const res = await fetch("/api/generate/image", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
@@ -361,6 +376,10 @@ export default function StudioPage() {
       if (abortController.signal.aborted) return;
 
       if (!res.ok) {
+        if (isUnauthorized(res.status)) {
+          router.push("/login?reason=session");
+          return;
+        }
         setError(data.error || "Generation failed");
         return;
       }
@@ -428,6 +447,7 @@ export default function StudioPage() {
     try {
       const res = await fetch("/api/generate/video", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
@@ -437,6 +457,10 @@ export default function StudioPage() {
       });
       const data = await res.json();
       if (!res.ok) {
+        if (isUnauthorized(res.status)) {
+          router.push("/login?reason=session");
+          return;
+        }
         setError(data.error || "Video generation failed");
         return;
       }
@@ -505,6 +529,7 @@ export default function StudioPage() {
     try {
       const res = await fetch("/api/generate/audio", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           projectId,
@@ -516,7 +541,11 @@ export default function StudioPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        const msg = data.error || "Audio generation failed";
+        if (isUnauthorized(res.status)) {
+          router.push("/login?reason=session");
+          return;
+        }
+        const msg = formatApiError(res.status, data.error) || "Audio generation failed";
         setAudioError(msg);
         setError(msg);
         return;
@@ -572,6 +601,7 @@ export default function StudioPage() {
     try {
       const res = await fetch("/api/generate/audio/preview", {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           script: settings.narrationScript,
@@ -586,6 +616,10 @@ export default function StudioPage() {
       };
 
       if (!res.ok) {
+        if (isUnauthorized(res.status)) {
+          router.push("/login?reason=session");
+          return;
+        }
         const billingIssue =
           res.status === 403 ||
           String(data.error || "").toLowerCase().includes("balance");

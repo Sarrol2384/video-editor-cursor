@@ -12,7 +12,15 @@ export function jsonError(message: string, status = 400) {
 export async function withAuth<T>(
   handler: (user: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>) => Promise<NextResponse>
 ) {
-  const user = await getSessionUser();
-  if (!user) return jsonError("Unauthorized", 401);
-  return handler(user);
+  try {
+    const user = await getSessionUser();
+    if (!user) return jsonError("Unauthorized", 401);
+    return await handler(user);
+  } catch (err) {
+    console.error("withAuth failed:", err);
+    return jsonError(
+      err instanceof Error ? err.message : "Server error",
+      500
+    );
+  }
 }
