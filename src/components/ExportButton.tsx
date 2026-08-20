@@ -859,7 +859,7 @@ export function ExportButton({
         return;
       }
 
-      let videoBlob: Blob;
+      let videoBlob: Blob | undefined;
       let videoDurationSec: number | null = null;
       let canvasExport = false;
       let exportDurationSec = resolveExportDurationSec(settings, null);
@@ -910,6 +910,10 @@ export function ExportButton({
         onExported?.(mp4Url);
         setProgress(100);
         return;
+      }
+
+      if (!videoBlob) {
+        throw new Error("Nothing to export");
       }
 
       const { url: mp4Url } = await uploadAndConvert(videoBlob, signal, {
